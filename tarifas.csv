@@ -1,0 +1,144 @@
+ISO,Country,Marketing,Utility,Authentication,Service
+AF,Afghanistan,90.38,13.96,13.96,0
+AL,Albania,106.18,26.18,26.18,0
+DZ,Algeria,27.78,4.94,4.94,0
+AO,Angola,27.78,4.94,4.94,0
+AR,Argentina,76.3,32.10,32.10,0
+AM,Armenia,106.18,26.18,26.18,0
+AU,Australia,90.38,13.96,13.96,0
+AT,Austria,73.09,21.12,21.12,0
+AZ,Azerbaijan,106.18,26.18,26.18,0
+BH,Bahrain,42.1,11.24,11.24,0
+BD,Bangladesh,90.38,13.96,13.96,0
+BY,Belarus,106.18,26.18,26.18,0
+BE,Belgium,73.09,21.12,21.12,0
+BJ,Benin,27.78,4.94,4.94,0
+BO,Bolivia,91.36,13.96,13.96,0
+BW,Botswana,27.78,4.94,4.94,0
+BR,Brazil,77.17,8.4,8.4,0
+BG,Bulgaria,106.18,26.18,26.18,0
+BF,Burkina Faso,27.78,4.94,4.94,0
+BI,Burundi,27.78,4.94,4.94,0
+KH,Cambodia,90.38,13.96,13.96,0
+CM,Cameroon,27.78,4.94,4.94,0
+CA,Canada,30.87,4.94,4.94,0
+TD,Chad,27.78,4.94,4.94,0
+CL,Chile,109.76,24.7,24.7,0
+CN,China,90.38,13.96,13.96,0
+CO,Colombia,15.44,0.99,0.99,0
+CG,Congo,27.78,4.94,4.94,0
+CD,Congo (Dem. Rep.),27.78,4.94,4.94,0
+CR,Costa Rica,91.36,13.96,13.96,0
+HR,Croatia,106.18,26.18,26.18,0
+CZ,Czech Republic,106.18,26.18,26.18,0
+DK,Denmark,73.09,21.12,21.12,0
+DO,Dominican Republic,91.36,13.96,13.96,0
+EC,Ecuador,91.36,13.96,13.96,0
+EG,Egypt,132.47,4.45,4.45,0
+SV,El Salvador,91.36,13.96,13.96,0
+ER,Eritrea,27.78,4.94,4.94,0
+SZ,Eswatini,27.78,4.94,4.94,0
+ET,Ethiopia,27.78,4.94,4.94,0
+FI,Finland,73.09,21.12,21.12,0
+FR,France,176.8,37.04,37.04,0
+GA,Gabon,27.78,4.94,4.94,0
+GM,Gambia,27.78,4.94,4.94,0
+GE,Georgia,106.18,26.18,26.18,0
+DE,Germany,168.52,67.91,67.91,0
+GH,Ghana,27.78,4.94,4.94,0
+GR,Greece,106.18,26.18,26.18,0
+GT,Guatemala,91.36,13.96,13.96,0
+GW,Guinea-Bissau,27.78,4.94,4.94,0
+HT,Haiti,91.36,13.96,13.96,0
+HN,Honduras,91.36,13.96,13.96,0
+HK,Hong Kong,90.38,13.96,13.96,0
+HU,Hungary,106.18,26.18,26.18,0
+IN,India,13.21,1.94,1.94,0
+ID,Indonesia,50.75,30.87,30.87,0
+IQ,Iraq,42.1,11.24,11.24,0
+IE,Ireland,73.09,21.12,21.12,0
+IL,Israel,43.59,6.55,6.55,0
+IT,Italy,85.31,37.04,37.04,0
+CI,Ivory Coast,27.78,4.94,4.94,0
+JM,Jamaica,91.36,13.96,13.96,0
+JP,Japan,90.38,13.96,13.96,0
+JO,Jordan,42.1,11.24,11.24,0
+KZ,Kazakstan,106.18,26.18,26.18,0
+KE,Kenya,27.78,4.94,4.94,0
+KW,Kuwait,42.1,11.24,11.24,0
+LA,Laos,90.38,13.96,13.96,0
+LV,Latvia,106.18,26.18,26.18,0
+LB,Lebanon,42.1,11.24,11.24,0
+LS,Lesotho,27.78,4.94,4.94,0
+LR,Liberia,27.78,4.94,4.94,0
+LY,Libya,27.78,4.94,4.94,0
+LT,Lithuania,106.18,26.18,26.18,0
+MO,Macau,90.38,13.96,13.96,0
+MK,Macedonia,106.18,26.18,26.18,0
+MG,Madagascar,27.78,4.94,4.94,0
+MW,Malawi,27.78,4.94,4.94,0
+MY,Malaysia,106.18,17.29,17.29,0
+ML,Mali,27.78,4.94,4.94,0
+MR,Mauritania,27.78,4.94,4.94,0
+MX,Mexico,37.66,10.5,10.5,0
+MD,Moldova,106.18,26.18,26.18,0
+MN,Mongolia,90.38,13.96,13.96,0
+MA,Morocco,27.78,4.94,4.94,0
+MZ,Mozambique,27.78,4.94,4.94,0
+NA,Namibia,27.78,4.94,4.94,0
+NP,Nepal,90.38,13.96,13.96,0
+NL,Netherlands,197.17,61.73,61.73,0
+NG,Nigeria,63.71,8.28,8.28,0
+NZ,New Zealand,90.38,13.96,13.96,0
+NI,Nicaragua,91.36,13.96,13.96,0
+NE,Niger,27.78,4.94,4.94,0
+NO,Norway,73.09,21.12,21.12,0
+OM,Oman,42.1,11.24,11.24,0
+PK,Pakistan,58.4,6.67,6.67,0
+PA,Panama,91.36,13.96,13.96,0
+PG,Papua New Guinea,90.38,13.96,13.96,0
+PY,Paraguay,91.36,13.96,13.96,0
+PE,Peru,86.8,24.7,24.7,0
+PH,Philippines,90.38,13.96,13.96,0
+PL,Poland,106.18,26.18,26.18,0
+PT,Portugal,73.09,21.12,21.12,0
+PR,Puerto Rico,91.36,13.96,13.96,0
+QA,Qatar,42.1,11.24,11.24,0
+RO,Romania,106.18,26.18,26.18,0
+RU,Russia,99.02,49.39,49.39,0
+RW,Rwanda,27.78,4.94,4.94,0
+SA,Saudi Arabia,56.18,13.21,13.21,0
+SN,Senegal,27.78,4.94,4.94,0
+RS,Serbia,106.18,26.18,26.18,0
+SL,Sierra Leone,27.78,4.94,4.94,0
+SG,Singapore,90.38,13.96,13.96,0
+SK,Slovakia,106.18,26.18,26.18,0
+SI,Slovenia,106.18,26.18,26.18,0
+SO,Somalia,27.78,4.94,4.94,0
+ZA,South Africa,46.8,9.39,9.39,0
+SS,South Sudan,27.78,4.94,4.94,0
+ES,Spain,75.93,24.7,24.7,0
+LK,Sri Lanka,90.38,13.96,13.96,0
+SD,Sudan,27.78,4.94,4.94,0
+SE,Sweden,73.09,21.12,21.12,0
+CH,Switzerland,73.09,21.12,21.12,0
+TW,Taiwan,90.38,13.96,13.96,0
+TJ,Tajikistan,90.38,13.96,13.96,0
+TZ,Tanzania,27.78,4.94,4.94,0
+TH,Thailand,90.38,13.96,13.96,0
+TG,Togo,27.78,4.94,4.94,0
+TN,Tunisia,27.78,4.94,4.94,0
+TR,Turkey,13.46,6.55,6.55,0
+TM,Turkmenistan,90.38,13.96,13.96,0
+UG,Uganda,27.78,4.94,4.94,0
+UA,Ukraine,106.18,26.18,26.18,0
+AE,United Arab Emirates,61.61,19.39,19.39,0
+GB,United Kingdom,65.31,27.17,27.17,0
+US,United States,30.87,4.94,4.94,0
+UY,Uruguay,91.36,13.96,13.96,0
+UZ,Uzbekistan,90.38,13.96,13.96,0
+VE,Venezuela,91.36,13.96,13.96,0
+VN,Vietnam,90.38,13.96,13.96,0
+YE,Yemen,42.1,11.24,11.24,0
+ZM,Zambia,27.78,4.94,4.94,0
+OTHER,Other,74.57,9.51,9.51,0
