@@ -299,7 +299,7 @@ c4.metric(
 c5, c6 = st.columns(2)
 
 c5.metric(
-    "📅 Consumo diario",
+    "📅 Consumo de créditos diario",
     f"{consumo_diario:,.0f}"
 )
 
@@ -633,17 +633,17 @@ for unidad in [
     c1, c2, c3, c4 = st.columns(4)
 
     c1.metric(
-        "💳 Usados",
+        "💳 Créditos Usados",
         f"{usados:,.0f}"
     )
 
     c2.metric(
-        "📊 Asignados",
+        "📊 Créditos Asignados",
         f"{asignados:,.0f}"
     )
 
     c3.metric(
-        "💰 Restantes",
+        "💰 Créditos Restantes",
         f"{restantes:,.0f}"
     )
 
