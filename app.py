@@ -145,11 +145,15 @@ df["mes"] = (
     .astype(str)
 )
 
-df["semana"] = (
+df["semana_num"] = (
     df["Send Date"]
     .dt.isocalendar()
     .week
-    .astype(str)
+)
+
+df["semana"] = (
+    "Semana " +
+    df["semana_num"].astype(str)
 )
 
 # -----------------------
@@ -396,10 +400,10 @@ def grafica_barras(
     df_chart,
     x_col,
     y_col,
-    titulo
+    titulo,
+    sort_field=None
 ):
 
-    # evitar problemas con valores 0
     df_chart = df_chart.copy()
 
     df_chart[y_col] = (
@@ -408,10 +412,18 @@ def grafica_barras(
         .astype(float)
     )
 
+    if sort_field:
+        sort_value = alt.SortField(
+            field=sort_field,
+            order="ascending"
+        )
+    else:
+        sort_value = "-y"
+
     base = alt.Chart(df_chart).encode(
         x=alt.X(
             x_col,
-            sort="-y",
+            sort=sort_value,
             axis=alt.Axis(labelAngle=0)
         ),
         y=alt.Y(
@@ -452,6 +464,35 @@ def grafica_barras(
     )
 
 # -----------------------
+# TOP PAISES
+# -----------------------
+
+def top_paises(df_base, titulo):
+
+    st.subheader(titulo)
+
+    paises = (
+        df_base
+        .groupby("WhatsApp Country")["creditos"]
+        .sum()
+        .reset_index()
+        .sort_values("creditos", ascending=False)
+        .head(10)
+    )
+
+    paises["creditos"] = (
+        paises["creditos"]
+        * FACTOR_AJUSTE
+    )
+
+    grafica_barras(
+        paises,
+        "WhatsApp Country",
+        "creditos",
+        titulo
+    )
+
+# -----------------------
 # ANÁLISIS GENERAL
 # -----------------------
 
@@ -479,7 +520,8 @@ grafica_barras(
     consumo_mes,
     "mes",
     "creditos",
-    "Consumo mensual"
+    "Consumo mensual",
+    sort_field="mes"
 )
 
 # -----------------------
@@ -490,7 +532,7 @@ st.subheader("📆 Consumo semanal")
 
 consumo_semana = (
     df_filtrado
-    .groupby("semana")["creditos"]
+    .groupby(["semana", "semana_num"])["creditos"]
     .sum()
     .reset_index()
 )
@@ -504,7 +546,8 @@ grafica_barras(
     consumo_semana,
     "semana",
     "creditos",
-    "Consumo semanal"
+    "Consumo semanal",
+    sort_field="semana_num"
 )
 
 # -----------------------
@@ -530,6 +573,15 @@ grafica_barras(
     "unidad",
     "creditos",
     "Consumo por unidad"
+)
+
+# -----------------------
+# TOP PAISES GENERAL
+# -----------------------
+
+top_paises(
+    df_filtrado,
+    "🌎 Países con mayor consumo"
 )
 
 # -----------------------
@@ -611,7 +663,7 @@ for unidad in [
 
     semana_unidad = (
         df_u
-        .groupby("semana")["creditos"]
+        .groupby(["semana", "semana_num"])["creditos"]
         .sum()
         .reset_index()
     )
@@ -625,7 +677,13 @@ for unidad in [
         semana_unidad,
         "semana",
         "creditos",
-        f"Consumo semanal - {unidad}"
+        f"Consumo semanal - {unidad}",
+        sort_field="semana_num"
+    )
+
+    top_paises(
+        df_u,
+        f"🌎 Países con mayor consumo - {unidad}"
     )
 
     if unidad == "mercadeo":
@@ -712,7 +770,7 @@ if journeys_sel:
 
     semana_j = (
         df_j
-        .groupby("semana")["creditos"]
+        .groupby(["semana", "semana_num"])["creditos"]
         .sum()
         .reset_index()
     )
@@ -726,7 +784,13 @@ if journeys_sel:
         semana_j,
         "semana",
         "creditos",
-        "Consumo semanal journeys"
+        "Consumo semanal journeys",
+        sort_field="semana_num"
+    )
+
+    top_paises(
+        df_j,
+        "🌎 Países con mayor consumo - Journeys"
     )
 
     # -----------------------
