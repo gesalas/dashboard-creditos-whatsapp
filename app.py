@@ -313,16 +313,17 @@ c6.metric(
 # -----------------------
 
 st.subheader("🔮 Proyecciones")
+st.caption("Establece un rango de fechas para realizar el cálculo)")
 
 colp1, colp2 = st.columns(2)
 
 fecha_inicio_proj = colp1.date_input(
-    "Inicio histórico",
+    "Fecha de Inicio",
     fecha_fin - pd.Timedelta(days=28)
 )
 
 fecha_fin_proj = colp2.date_input(
-    "Fin histórico",
+    "Fecha de Fin",
     fecha_fin
 )
 
@@ -373,7 +374,7 @@ if not df_proj.empty:
         if consumo_diario_proj > 0
         else None
     )
-
+    st.subheader("Proyección basada en el consumo diario del periodo seleccionado")
     c1, c2, c3 = st.columns(3)
 
     c1.metric(
@@ -387,7 +388,7 @@ if not df_proj.empty:
     )
 
     c3.metric(
-        "⏳ Agotamiento",
+        "⏳ Fecha de Agotamiento de Créditos",
         fecha_agotamiento.strftime("%Y-%m-%d")
         if fecha_agotamiento else "N/A"
     )
