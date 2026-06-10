@@ -283,7 +283,7 @@ c1.metric(
 
 c4.metric(
     "📈 % uso",
-    f"{(total_consumido / creditos_totales)*100:.2f}%"
+    f"{(total_consumido / creditos_totales)*100:.0f}%"
 )
 
 c2.metric(
