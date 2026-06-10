@@ -292,15 +292,15 @@ c3.metric(
 )
 
 c4.metric(
-    "📦 Deliveries",
-    f"{total_deliveries:,.0f}"
+    "📅 Consumo de créditos diario",
+    f"{consumo_diario:,.0f}"
 )
 
 c5, c6 = st.columns(2)
 
 c5.metric(
-    "📅 Consumo de créditos diario",
-    f"{consumo_diario:,.0f}"
+    "📦 Deliveries",
+    f"{total_deliveries:,.0f}"
 )
 
 c6.metric(
