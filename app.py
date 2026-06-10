@@ -281,6 +281,11 @@ c1.metric(
     f"{total_consumido:,.0f}"
 )
 
+c4.metric(
+    "📈 % uso",
+    f"{(total_consumido / creditos_totales)*100:.2f}%"
+)
+
 c2.metric(
     "💰 Créditos restantes",
     f"{restante:,.0f}"
@@ -289,11 +294,6 @@ c2.metric(
 c3.metric(
     "📦 Deliveries",
     f"{total_deliveries:,.0f}"
-)
-
-c4.metric(
-    "📈 % uso",
-    f"{(total_consumido / creditos_totales)*100:.2f}%"
 )
 
 c5, c6 = st.columns(2)
@@ -555,7 +555,7 @@ grafica_barras(
 # CONSUMO POR UNIDAD
 # -----------------------
 
-st.subheader("🏢 Consumo por unidad")
+st.subheader("🏢 Consumo por unidad en el periodo seleccionado")
 
 consumo_unidad = (
     df_filtrado
@@ -582,7 +582,7 @@ grafica_barras(
 
 top_paises(
     df_filtrado,
-    "🌎 Países con mayor consumo"
+    "🌎 Países con mayor consumo en el periodo seleccionado"
 )
 
 # -----------------------
@@ -639,7 +639,7 @@ for unidad in [
     )
 
     c2.metric(
-        "📊 Créditos Asignados",
+        "📊 Créditos estimados",
         f"{asignados:,.0f}"
     )
 
@@ -760,7 +760,7 @@ if journeys_sel:
     c1, c2 = st.columns(2)
 
     c1.metric(
-        "💳 Créditos",
+        "💳 Créditos consumidos",
         f"{creditos_j:,.0f}"
     )
 
