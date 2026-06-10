@@ -281,17 +281,17 @@ c1.metric(
     f"{total_consumido:,.0f}"
 )
 
-c4.metric(
+c2.metric(
     "📈 % uso",
-    f"{(total_consumido / creditos_totales)*100:.0f}%"
+    f"{(total_consumido / creditos_totales)*100:.2f}%"
 )
 
-c2.metric(
+c3.metric(
     "💰 Créditos restantes",
     f"{restante:,.0f}"
 )
 
-c3.metric(
+c4.metric(
     "📦 Deliveries",
     f"{total_deliveries:,.0f}"
 )
