@@ -47,7 +47,7 @@ else:
 # AJUSTE GLOBAL
 # -----------------------
 
-FACTOR_AJUSTE = 0.9738660513 
+FACTOR_AJUSTE = 0.9737660513 
 
 # -----------------------
 # LIMPIEZA
