@@ -582,7 +582,7 @@ grafica_barras(
 
 top_paises(
     df_filtrado,
-    "🌎 Países con mayor consumo"
+    "🌎 Países con mayor consumo en el periodo seleccionado"
 )
 
 # -----------------------
