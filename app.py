@@ -374,7 +374,7 @@ if not df_proj.empty:
         if consumo_diario_proj > 0
         else None
     )
-    st.subheader("Proyección basada en el consumo diario del periodo seleccionado")
+    st.subheader("Proyección basada en el consumo del periodo seleccionado")
     c1, c2, c3 = st.columns(3)
 
     c1.metric(
@@ -497,7 +497,7 @@ def top_paises(df_base, titulo):
 # ANÁLISIS GENERAL
 # -----------------------
 
-st.header("📊 Análisis General")
+st.header("Análisis General")
 
 # -----------------------
 # CONSUMO MENSUAL
@@ -555,7 +555,7 @@ grafica_barras(
 # CONSUMO POR UNIDAD
 # -----------------------
 
-st.subheader("🏢 Consumo por unidad en el periodo seleccionado")
+st.subheader("🏢 Consumo por unidad ")
 
 consumo_unidad = (
     df_filtrado
@@ -573,7 +573,7 @@ grafica_barras(
     consumo_unidad,
     "unidad",
     "creditos",
-    "Consumo por unidad"
+    "Consumo por unidad en el periodo seleccionado"
 )
 
 # -----------------------
@@ -582,7 +582,7 @@ grafica_barras(
 
 top_paises(
     df_filtrado,
-    "🌎 Países con mayor consumo en el periodo seleccionado"
+    "🌎 Países con mayor consumo"
 )
 
 # -----------------------
