@@ -521,7 +521,7 @@ grafica_barras(
     consumo_mes,
     "mes",
     "creditos",
-    "Consumo mensual",
+    "Consumo mensual del periodo seleccionado",
     sort_field="mes"
 )
 
@@ -547,7 +547,7 @@ grafica_barras(
     consumo_semana,
     "semana",
     "creditos",
-    "Consumo semanal",
+    "Consumo semanal del periodo seleccionado",
     sort_field="semana_num"
 )
 
