@@ -132,7 +132,7 @@ tarifas, config, df = load_data()
 # AJUSTE GLOBAL
 # -----------------------
 
-FACTOR_AJUSTE = 1
+FACTOR_AJUSTE = 0.9448253844046506
 
 # -----------------------
 # LIMPIEZA
