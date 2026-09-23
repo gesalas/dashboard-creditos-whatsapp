@@ -1,8 +1,5 @@
 {
-  "creditos_totales": 9843000,
-  "unidades": {
-    "MERCA": 7500000,
-    "EGRES": 498800,
-    "DONAC": 200
-  }
+  "general": {"creditos_totales": 15788323, "unidades": {"MERCA": 14495867, "EGRES": 60000, "DONAC": 40000}},
+  "ucp": {"creditos_totales": 1292456, "unidades": {"MERCA": 1292456, "EGRES": 0, "DONAC": 0}},
+  "outbound": {"creditos_totales": 14495867, "unidades": {"MERCA": 14495867, "EGRES": 30000, "DONAC": 20000}}
 }

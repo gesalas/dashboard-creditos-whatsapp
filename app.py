@@ -7,6 +7,13 @@ import altair as alt
 st.set_page_config(layout="wide")
 
 # -----------------------
+# CANALES (líneas de WhatsApp)
+# -----------------------
+
+CANAL_UCP = "573102190903"
+CANAL_OUTBOUND = "573160271386"
+
+# -----------------------
 # ESTILOS
 # -----------------------
 
@@ -121,7 +128,33 @@ def load_data():
     with open("config.json") as f:
         config = json.load(f)
 
-    df = pd.read_excel("data.xlsx")
+    # El reporte que entrega Marketing trae filas de encabezado del widget
+    # (nombre del widget, rango de fechas, filas en blanco) antes de la
+    # fila real de encabezados, y una fila "Totals" al final. Detectamos
+    # dinámicamente en qué fila están los encabezados reales buscando
+    # "WhatsApp Country".
+    df_raw = pd.read_excel("data.xlsx", header=None)
+
+    header_row_idx = 0
+
+    for i in range(len(df_raw)):
+        fila = df_raw.iloc[i].astype(str).str.strip()
+        if (fila == "WhatsApp Country").any():
+            header_row_idx = i
+            break
+
+    df = df_raw.iloc[header_row_idx + 1:].copy()
+    df.columns = df_raw.iloc[header_row_idx]
+    df = df.reset_index(drop=True)
+
+    # Las filas que genera Marketing (datos reales) quedan al inicio del
+    # dataframe; se descarta cualquier fila de totales o vacía al final.
+    df = df[df["WhatsApp Country"].notna()]
+    df = df[
+        df["WhatsApp Country"].astype(str).str.strip().str.lower() != "totals"
+    ]
+    df = df[df["Journey Name"].notna()]
+    df = df.reset_index(drop=True)
 
     return tarifas, config, df
 
@@ -157,6 +190,23 @@ tarifas["ISO"] = (
 )
 
 # -----------------------
+# CANAL (línea de WhatsApp)
+# -----------------------
+
+def normalizar_canal(valor):
+    try:
+        return str(int(float(valor)))
+    except (ValueError, TypeError):
+        texto = str(valor).strip()
+        return texto if texto.lower() != "nan" else ""
+
+
+if "WhatsApp Channel ID" in df.columns:
+    df["WhatsApp Channel ID"] = df["WhatsApp Channel ID"].apply(normalizar_canal)
+else:
+    df["WhatsApp Channel ID"] = ""
+
+# -----------------------
 # TIPO DE CONVERSACIÓN (Marketing / Utility)
 # -----------------------
 
@@ -179,6 +229,14 @@ df["Send Date"] = pd.to_datetime(
 )
 
 df = df[df["Send Date"].notna()]
+
+# -----------------------
+# DELIVERIES NUMÉRICO
+# -----------------------
+
+df["WhatsApp Deliveries"] = pd.to_numeric(
+    df["WhatsApp Deliveries"], errors="coerce"
+).fillna(0)
 
 # -----------------------
 # MERGE TARIFAS
@@ -327,226 +385,6 @@ def render_desglose(df_subset, factor=FACTOR_AJUSTE):
 
 
 # -----------------------
-# SIDEBAR
-# -----------------------
-
-st.sidebar.title("⚙️ Configuración")
-
-creditos_totales = st.sidebar.number_input(
-    "Créditos totales",
-    value=config["creditos_totales"]
-)
-
-creditos_unidad = {}
-
-for unidad, valor in config["unidades"].items():
-
-    creditos_unidad[unidad] = (
-        st.sidebar.number_input(
-            unidad,
-            value=valor
-        )
-    )
-
-map_creditos = {
-    "mercadeo": creditos_unidad.get("MERCA", 0),
-    "egresados": creditos_unidad.get("EGRES", 0),
-    "donaciones": creditos_unidad.get("DONAC", 0),
-}
-
-# -----------------------
-# FILTRO GLOBAL
-# -----------------------
-
-st.title("📊 Dashboard Créditos WhatsApp")
-
-fecha_min = df["Send Date"].min()
-fecha_max = df["Send Date"].max()
-
-col1, col2 = st.columns(2)
-
-fecha_inicio = col1.date_input(
-    "Fecha inicio",
-    fecha_min
-)
-
-fecha_fin = col2.date_input(
-    "Fecha fin",
-    fecha_max
-)
-
-df_filtrado = df[
-    (df["Send Date"] >= pd.to_datetime(fecha_inicio))
-    &
-    (df["Send Date"] <= pd.to_datetime(fecha_fin))
-]
-
-# -----------------------
-# KPIS
-# -----------------------
-
-section_header("📌 Estatus Global")
-
-total_consumido, marketing_consumido, utility_consumido = desglose_tipo(df_filtrado)
-
-total_deliveries = (
-    df_filtrado["WhatsApp Deliveries"].sum()
-)
-
-restante = (
-    creditos_totales - total_consumido
-)
-
-dias = (
-    pd.to_datetime(fecha_fin)
-    -
-    pd.to_datetime(fecha_inicio)
-).days + 1
-
-consumo_diario = (
-    total_consumido / dias
-    if dias > 0 else 0
-)
-
-deliveries_diario = (
-    total_deliveries / dias
-    if dias > 0 else 0
-)
-
-c1, c2, c3, c4 = st.columns(4)
-
-c1.metric(
-    "💳 Créditos consumidos",
-    f"{total_consumido:,.0f}"
-)
-
-c2.metric(
-    "📈 % uso",
-    f"{(total_consumido / creditos_totales)*100:.2f}%"
-)
-
-c3.metric(
-    "💰 Créditos restantes",
-    f"{restante:,.0f}"
-)
-
-c4.metric(
-    "📅 Consumo de créditos diario",
-    f"{consumo_diario:,.0f}"
-)
-
-render_desglose(df_filtrado)
-
-c5, c6 = st.columns(2)
-
-c5.metric(
-    "📦 Deliveries",
-    f"{total_deliveries:,.0f}"
-)
-
-c6.metric(
-    "📨 Deliveries diarios",
-    f"{deliveries_diario:,.0f}"
-)
-
-# -----------------------
-# 🔮 PROYECCIONES
-# -----------------------
-
-subsection_header("🔮 Proyecciones")
-st.caption("Establece un rango de fechas para realizar el cálculo")
-
-colp1, colp2 = st.columns(2)
-
-fecha_inicio_proj = colp1.date_input(
-    "Fecha de Inicio",
-    fecha_fin - pd.Timedelta(days=28)
-)
-
-fecha_fin_proj = colp2.date_input(
-    "Fecha de Fin",
-    fecha_fin
-)
-
-df_proj = df[
-    (df["Send Date"] >= pd.to_datetime(fecha_inicio_proj))
-    &
-    (df["Send Date"] <= pd.to_datetime(fecha_fin_proj))
-]
-
-if not df_proj.empty:
-
-    dias_proj = (
-        pd.to_datetime(fecha_fin_proj)
-        -
-        pd.to_datetime(fecha_inicio_proj)
-    ).days + 1
-
-    total_proj, marketing_proj, utility_proj = desglose_tipo(df_proj)
-
-    consumo_diario_proj = total_proj / dias_proj
-    consumo_diario_proj_mkt = marketing_proj / dias_proj
-    consumo_diario_proj_uti = utility_proj / dias_proj
-
-    deliveries_diario_proj = (
-        df_proj["WhatsApp Deliveries"].sum()
-        / dias_proj
-    )
-
-    proy_creditos = consumo_diario_proj * 7
-    proy_creditos_mkt = consumo_diario_proj_mkt * 7
-    proy_creditos_uti = consumo_diario_proj_uti * 7
-
-    proy_deliveries = (
-        deliveries_diario_proj * 7
-    )
-
-    fecha_agotamiento = (
-        pd.to_datetime(fecha_fin)
-        +
-        pd.Timedelta(
-            days=(
-                restante /
-                consumo_diario_proj
-            )
-        )
-        if consumo_diario_proj > 0
-        else None
-    )
-
-    st.markdown("**Proyección basada en el consumo del periodo seleccionado**")
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric(
-        "💳 Créditos próxima semana",
-        f"{proy_creditos:,.0f}"
-    )
-
-    c2.metric(
-        "📦 Deliveries próxima semana",
-        f"{proy_deliveries:,.0f}"
-    )
-
-    c3.metric(
-        "⏳ Fecha de Agotamiento de Créditos",
-        fecha_agotamiento.strftime("%Y-%m-%d")
-        if fecha_agotamiento else "N/A"
-    )
-
-    st.markdown(
-        f"""
-        <div class="desglose-box">
-            <span class="desglose-item mkt">📣 Marketing: <b>{proy_creditos_mkt:,.0f}</b></span>
-            <span class="desglose-item uti">🔧 Utility: <b>{proy_creditos_uti:,.0f}</b></span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-section_divider()
-
-# -----------------------
 # FUNCIÓN GRÁFICAS
 # -----------------------
 
@@ -646,420 +484,714 @@ def top_paises(df_base, titulo):
         titulo
     )
 
-# -----------------------
-# ANÁLISIS GENERAL
-# -----------------------
-
-section_header("📊 Análisis General")
 
 # -----------------------
-# CONSUMO MENSUAL
+# CONFIGURACIÓN DE CRÉDITOS POR PESTAÑA
 # -----------------------
 
-subsection_header("📅 Consumo mensual")
+def config_de_pestana(config, config_key):
+    """Obtiene la config de créditos de una pestaña, con fallback a la
+    estructura antigua (plana) si el config.json aún no fue migrado."""
 
-consumo_mes = (
-    df_filtrado
-    .groupby("mes")["creditos"]
-    .sum()
-    .reset_index()
+    if config_key in config:
+        return config[config_key]
+
+    if config_key == "general":
+        return {
+            "creditos_totales": config.get("creditos_totales", 0),
+            "unidades": config.get("unidades", {}),
+        }
+
+    return {"creditos_totales": 0, "unidades": {"MERCA": 0, "EGRES": 0, "DONAC": 0}}
+
+
+def sidebar_config(container, tab_key, config_key):
+
+    cfg = config_de_pestana(config, config_key)
+
+    creditos_totales = container.number_input(
+        "Créditos totales",
+        value=float(cfg.get("creditos_totales", 0)),
+        key=f"{tab_key}_creditos_totales"
+    )
+
+    unidades_cfg = cfg.get("unidades", {})
+    creditos_unidad = {}
+
+    for unidad in ["MERCA", "EGRES", "DONAC"]:
+        creditos_unidad[unidad] = container.number_input(
+            unidad,
+            value=float(unidades_cfg.get(unidad, 0)),
+            key=f"{tab_key}_{unidad}"
+        )
+
+    map_creditos = {
+        "mercadeo": creditos_unidad.get("MERCA", 0),
+        "egresados": creditos_unidad.get("EGRES", 0),
+        "donaciones": creditos_unidad.get("DONAC", 0),
+    }
+
+    return creditos_totales, map_creditos
+
+
+st.sidebar.title("⚙️ Configuración")
+st.sidebar.caption("Define los créditos disponibles para cada pestaña")
+
+exp_general = st.sidebar.expander("📊 General (ambas líneas)", expanded=True)
+creditos_totales_general, map_creditos_general = sidebar_config(
+    exp_general, "general", "general"
 )
 
-consumo_mes["creditos"] = (
-    consumo_mes["creditos"]
-    * FACTOR_AJUSTE
+exp_ucp = st.sidebar.expander(f"📱 UCP ({CANAL_UCP})")
+creditos_totales_ucp, map_creditos_ucp = sidebar_config(
+    exp_ucp, "ucp", "ucp"
 )
 
-grafica_barras(
-    consumo_mes,
-    "mes",
-    "creditos",
-    "Consumo mensual del periodo seleccionado",
-    sort_field="mes"
-)
-
-# -----------------------
-# CONSUMO SEMANAL
-# -----------------------
-
-subsection_header("📆 Consumo semanal")
-
-consumo_semana = (
-    df_filtrado
-    .groupby(["semana", "semana_num"])["creditos"]
-    .sum()
-    .reset_index()
-)
-
-consumo_semana["creditos"] = (
-    consumo_semana["creditos"]
-    * FACTOR_AJUSTE
-)
-
-grafica_barras(
-    consumo_semana,
-    "semana",
-    "creditos",
-    "Consumo semanal del periodo seleccionado",
-    sort_field="semana_num"
-)
-
-# -----------------------
-# CONSUMO POR UNIDAD
-# -----------------------
-
-subsection_header("🏢 Consumo por unidad")
-
-consumo_unidad = (
-    df_filtrado
-    .groupby("unidad")["creditos"]
-    .sum()
-    .reset_index()
-)
-
-consumo_unidad["creditos"] = (
-    consumo_unidad["creditos"]
-    * FACTOR_AJUSTE
-)
-
-grafica_barras(
-    consumo_unidad,
-    "unidad",
-    "creditos",
-    "Consumo por unidad en el periodo seleccionado"
+exp_outbound = st.sidebar.expander(f"📤 Outbound ({CANAL_OUTBOUND})")
+creditos_totales_outbound, map_creditos_outbound = sidebar_config(
+    exp_outbound, "outbound", "outbound"
 )
 
 # -----------------------
-# TOP PAISES GENERAL
+# DASHBOARD (misma lógica para las 3 pestañas)
 # -----------------------
 
-top_paises(
-    df_filtrado,
-    "🌎 Países con mayor consumo en el periodo seleccionado"
-)
+def render_dashboard(df_base, creditos_totales, map_creditos, tab_key):
 
-section_divider()
+    if df_base.empty:
+        st.info("No hay datos disponibles para esta línea en el archivo cargado.")
+        return
 
-# -----------------------
-# SECCIÓN POR UNIDAD
-# -----------------------
+    # -----------------------
+    # FILTRO GLOBAL
+    # -----------------------
 
-section_header("🏢 Análisis por Unidad")
+    fecha_min = df_base["Send Date"].min()
+    fecha_max = df_base["Send Date"].max()
 
-for unidad in [
-    "mercadeo",
-    "egresados",
-    "donaciones"
-]:
+    col1, col2 = st.columns(2)
 
-    unidad_header(f"Unidad: {unidad.upper()}")
+    fecha_inicio = col1.date_input(
+        "Fecha inicio",
+        fecha_min,
+        key=f"{tab_key}_fecha_inicio"
+    )
 
-    df_u = df_filtrado[
-        df_filtrado["unidad"] == unidad
+    fecha_fin = col2.date_input(
+        "Fecha fin",
+        fecha_max,
+        key=f"{tab_key}_fecha_fin"
+    )
+
+    df_filtrado = df_base[
+        (df_base["Send Date"] >= pd.to_datetime(fecha_inicio))
+        &
+        (df_base["Send Date"] <= pd.to_datetime(fecha_fin))
     ]
 
-    if df_u.empty:
-        st.info("Sin datos")
-        continue
+    # -----------------------
+    # KPIS
+    # -----------------------
 
-    usados, usados_mkt, usados_uti = desglose_tipo(df_u)
+    section_header("📌 Estatus Global")
 
-    deliveries = (
-        df_u["WhatsApp Deliveries"].sum()
+    total_consumido, marketing_consumido, utility_consumido = desglose_tipo(df_filtrado)
+
+    total_deliveries = (
+        df_filtrado["WhatsApp Deliveries"].sum()
     )
 
-    asignados = (
-        map_creditos.get(unidad, 0)
+    restante = (
+        creditos_totales - total_consumido
     )
 
-    restantes = (
-        asignados - usados
+    dias = (
+        pd.to_datetime(fecha_fin)
+        -
+        pd.to_datetime(fecha_inicio)
+    ).days + 1
+
+    consumo_diario = (
+        total_consumido / dias
+        if dias > 0 else 0
     )
 
-    porcentaje = (
-        (usados / asignados * 100)
-        if asignados > 0 else 0
+    deliveries_diario = (
+        total_deliveries / dias
+        if dias > 0 else 0
     )
 
     c1, c2, c3, c4 = st.columns(4)
 
     c1.metric(
-        "💳 Créditos Usados",
-        f"{usados:,.0f}"
+        "💳 Créditos consumidos",
+        f"{total_consumido:,.0f}"
     )
 
     c2.metric(
-        "📊 Créditos estimados",
-        f"{asignados:,.0f}"
+        "📈 % uso",
+        f"{(total_consumido / creditos_totales)*100:.2f}%"
+        if creditos_totales else "N/A"
     )
 
     c3.metric(
-        "💰 Créditos Restantes",
-        f"{restantes:,.0f}"
+        "💰 Créditos restantes",
+        f"{restante:,.0f}"
     )
 
     c4.metric(
-        "📈 % uso",
-        f"{porcentaje:.2f}%"
+        "📅 Consumo de créditos diario",
+        f"{consumo_diario:,.0f}"
     )
 
-    st.markdown(
-        f"""
-        <div class="desglose-box">
-            <span class="desglose-item mkt">📣 Marketing: <b>{usados_mkt:,.0f}</b></span>
-            <span class="desglose-item uti">🔧 Utility: <b>{usados_uti:,.0f}</b></span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    render_desglose(df_filtrado)
 
-    st.progress(
-        min(porcentaje / 100, 1.0)
-    )
+    c5, c6 = st.columns(2)
 
-    st.metric(
+    c5.metric(
         "📦 Deliveries",
-        f"{deliveries:,.0f}"
+        f"{total_deliveries:,.0f}"
     )
 
-    semana_unidad = (
-        df_u
+    c6.metric(
+        "📨 Deliveries diarios",
+        f"{deliveries_diario:,.0f}"
+    )
+
+    # -----------------------
+    # 🔮 PROYECCIONES
+    # -----------------------
+
+    subsection_header("🔮 Proyecciones")
+    st.caption("Establece un rango de fechas para realizar el cálculo")
+
+    colp1, colp2 = st.columns(2)
+
+    fecha_inicio_proj = colp1.date_input(
+        "Fecha de Inicio",
+        fecha_fin - pd.Timedelta(days=28),
+        key=f"{tab_key}_fecha_inicio_proj"
+    )
+
+    fecha_fin_proj = colp2.date_input(
+        "Fecha de Fin",
+        fecha_fin,
+        key=f"{tab_key}_fecha_fin_proj"
+    )
+
+    df_proj = df_base[
+        (df_base["Send Date"] >= pd.to_datetime(fecha_inicio_proj))
+        &
+        (df_base["Send Date"] <= pd.to_datetime(fecha_fin_proj))
+    ]
+
+    if not df_proj.empty:
+
+        dias_proj = (
+            pd.to_datetime(fecha_fin_proj)
+            -
+            pd.to_datetime(fecha_inicio_proj)
+        ).days + 1
+
+        total_proj, marketing_proj, utility_proj = desglose_tipo(df_proj)
+
+        consumo_diario_proj = total_proj / dias_proj
+        consumo_diario_proj_mkt = marketing_proj / dias_proj
+        consumo_diario_proj_uti = utility_proj / dias_proj
+
+        deliveries_diario_proj = (
+            df_proj["WhatsApp Deliveries"].sum()
+            / dias_proj
+        )
+
+        proy_creditos = consumo_diario_proj * 7
+        proy_creditos_mkt = consumo_diario_proj_mkt * 7
+        proy_creditos_uti = consumo_diario_proj_uti * 7
+
+        proy_deliveries = (
+            deliveries_diario_proj * 7
+        )
+
+        fecha_agotamiento = (
+            pd.to_datetime(fecha_fin)
+            +
+            pd.Timedelta(
+                days=(
+                    restante /
+                    consumo_diario_proj
+                )
+            )
+            if consumo_diario_proj > 0
+            else None
+        )
+
+        st.markdown("**Proyección basada en el consumo del periodo seleccionado**")
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "💳 Créditos próxima semana",
+            f"{proy_creditos:,.0f}"
+        )
+
+        c2.metric(
+            "📦 Deliveries próxima semana",
+            f"{proy_deliveries:,.0f}"
+        )
+
+        c3.metric(
+            "⏳ Fecha de Agotamiento de Créditos",
+            fecha_agotamiento.strftime("%Y-%m-%d")
+            if fecha_agotamiento else "N/A"
+        )
+
+        st.markdown(
+            f"""
+            <div class="desglose-box">
+                <span class="desglose-item mkt">📣 Marketing: <b>{proy_creditos_mkt:,.0f}</b></span>
+                <span class="desglose-item uti">🔧 Utility: <b>{proy_creditos_uti:,.0f}</b></span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    section_divider()
+
+    # -----------------------
+    # ANÁLISIS GENERAL
+    # -----------------------
+
+    section_header("📊 Análisis General")
+
+    # CONSUMO MENSUAL
+
+    subsection_header("📅 Consumo mensual")
+
+    consumo_mes = (
+        df_filtrado
+        .groupby("mes")["creditos"]
+        .sum()
+        .reset_index()
+    )
+
+    consumo_mes["creditos"] = (
+        consumo_mes["creditos"]
+        * FACTOR_AJUSTE
+    )
+
+    grafica_barras(
+        consumo_mes,
+        "mes",
+        "creditos",
+        "Consumo mensual del periodo seleccionado",
+        sort_field="mes"
+    )
+
+    # CONSUMO SEMANAL
+
+    subsection_header("📆 Consumo semanal")
+
+    consumo_semana = (
+        df_filtrado
         .groupby(["semana", "semana_num"])["creditos"]
         .sum()
         .reset_index()
     )
 
-    semana_unidad["creditos"] = (
-        semana_unidad["creditos"]
+    consumo_semana["creditos"] = (
+        consumo_semana["creditos"]
         * FACTOR_AJUSTE
     )
 
     grafica_barras(
-        semana_unidad,
+        consumo_semana,
         "semana",
         "creditos",
-        f"Consumo semanal - {unidad}",
+        "Consumo semanal del periodo seleccionado",
         sort_field="semana_num"
     )
 
-    top_paises(
-        df_u,
-        f"🌎 Países con mayor consumo - {unidad}"
+    # CONSUMO POR UNIDAD
+
+    subsection_header("🏢 Consumo por unidad")
+
+    consumo_unidad = (
+        df_filtrado
+        .groupby("unidad")["creditos"]
+        .sum()
+        .reset_index()
     )
 
-    if unidad == "mercadeo":
+    consumo_unidad["creditos"] = (
+        consumo_unidad["creditos"]
+        * FACTOR_AJUSTE
+    )
 
-        subsection_header("📌 Clasificación de Journeys")
+    grafica_barras(
+        consumo_unidad,
+        "unidad",
+        "creditos",
+        "Consumo por unidad en el periodo seleccionado"
+    )
 
-        tipo_chart = (
+    # TOP PAISES GENERAL
+
+    top_paises(
+        df_filtrado,
+        "🌎 Países con mayor consumo en el periodo seleccionado"
+    )
+
+    section_divider()
+
+    # -----------------------
+    # SECCIÓN POR UNIDAD
+    # -----------------------
+
+    section_header("🏢 Análisis por Unidad")
+
+    for unidad in [
+        "mercadeo",
+        "egresados",
+        "donaciones"
+    ]:
+
+        unidad_header(f"Unidad: {unidad.upper()}")
+
+        df_u = df_filtrado[
+            df_filtrado["unidad"] == unidad
+        ]
+
+        if df_u.empty:
+            st.info("Sin datos")
+            continue
+
+        usados, usados_mkt, usados_uti = desglose_tipo(df_u)
+
+        deliveries = (
+            df_u["WhatsApp Deliveries"].sum()
+        )
+
+        asignados = (
+            map_creditos.get(unidad, 0)
+        )
+
+        restantes = (
+            asignados - usados
+        )
+
+        porcentaje = (
+            (usados / asignados * 100)
+            if asignados > 0 else 0
+        )
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        c1.metric(
+            "💳 Créditos Usados",
+            f"{usados:,.0f}"
+        )
+
+        c2.metric(
+            "📊 Créditos estimados",
+            f"{asignados:,.0f}"
+        )
+
+        c3.metric(
+            "💰 Créditos Restantes",
+            f"{restantes:,.0f}"
+        )
+
+        c4.metric(
+            "📈 % uso",
+            f"{porcentaje:.2f}%"
+        )
+
+        st.markdown(
+            f"""
+            <div class="desglose-box">
+                <span class="desglose-item mkt">📣 Marketing: <b>{usados_mkt:,.0f}</b></span>
+                <span class="desglose-item uti">🔧 Utility: <b>{usados_uti:,.0f}</b></span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.progress(
+            min(porcentaje / 100, 1.0)
+        )
+
+        st.metric(
+            "📦 Deliveries",
+            f"{deliveries:,.0f}"
+        )
+
+        semana_unidad = (
             df_u
-            .groupby("tipo_journey")["creditos"]
+            .groupby(["semana", "semana_num"])["creditos"]
             .sum()
             .reset_index()
         )
 
-        tipo_chart["creditos"] = (
-            tipo_chart["creditos"]
+        semana_unidad["creditos"] = (
+            semana_unidad["creditos"]
             * FACTOR_AJUSTE
         )
 
         grafica_barras(
-            tipo_chart,
-            "tipo_journey",
+            semana_unidad,
+            "semana",
             "creditos",
-            "Clasificación journeys mercadeo"
+            f"Consumo semanal - {unidad}",
+            sort_field="semana_num"
         )
 
-section_divider()
+        top_paises(
+            df_u,
+            f"🌎 Países con mayor consumo - {unidad}"
+        )
 
-# -----------------------
-# JOURNEYS
-# -----------------------
+        if unidad == "mercadeo":
 
-section_header("🎯 Journeys específicos")
+            subsection_header("📌 Clasificación de Journeys")
 
-colf1, colf2 = st.columns(2)
+            tipo_chart = (
+                df_u
+                .groupby("tipo_journey")["creditos"]
+                .sum()
+                .reset_index()
+            )
 
-filtro_inicio = colf1.date_input(
-    "Fecha inicio journeys",
-    fecha_fin - pd.Timedelta(days=28)
-)
+            tipo_chart["creditos"] = (
+                tipo_chart["creditos"]
+                * FACTOR_AJUSTE
+            )
 
-filtro_fin = colf2.date_input(
-    "Fecha fin journeys",
-    fecha_fin
-)
+            grafica_barras(
+                tipo_chart,
+                "tipo_journey",
+                "creditos",
+                "Clasificación journeys mercadeo"
+            )
 
-df_j_base = df[
-    (df["Send Date"] >= pd.to_datetime(filtro_inicio))
-    &
-    (df["Send Date"] <= pd.to_datetime(filtro_fin))
-]
+    section_divider()
 
-journeys_sel = st.multiselect(
-    "Selecciona journeys",
-    sorted(df_j_base["Journey Name"].unique())
-)
+    # -----------------------
+    # JOURNEYS
+    # -----------------------
 
-if journeys_sel:
+    section_header("🎯 Journeys específicos")
 
-    df_j = df_j_base[
-        df_j_base["Journey Name"]
-        .isin(journeys_sel)
+    colf1, colf2 = st.columns(2)
+
+    filtro_inicio = colf1.date_input(
+        "Fecha inicio journeys",
+        fecha_fin - pd.Timedelta(days=28),
+        key=f"{tab_key}_filtro_inicio_j"
+    )
+
+    filtro_fin = colf2.date_input(
+        "Fecha fin journeys",
+        fecha_fin,
+        key=f"{tab_key}_filtro_fin_j"
+    )
+
+    df_j_base = df_base[
+        (df_base["Send Date"] >= pd.to_datetime(filtro_inicio))
+        &
+        (df_base["Send Date"] <= pd.to_datetime(filtro_fin))
     ]
 
-    creditos_j, creditos_j_mkt, creditos_j_uti = desglose_tipo(df_j)
-
-    deliveries_j = (
-        df_j["WhatsApp Deliveries"].sum()
+    journeys_sel = st.multiselect(
+        "Selecciona journeys",
+        sorted(df_j_base["Journey Name"].unique()),
+        key=f"{tab_key}_journeys_sel"
     )
 
-    c1, c2 = st.columns(2)
+    if journeys_sel:
 
-    c1.metric(
-        "💳 Créditos consumidos",
-        f"{creditos_j:,.0f}"
-    )
+        df_j = df_j_base[
+            df_j_base["Journey Name"]
+            .isin(journeys_sel)
+        ]
 
-    c2.metric(
-        "📦 Deliveries",
-        f"{deliveries_j:,.0f}"
-    )
+        creditos_j, creditos_j_mkt, creditos_j_uti = desglose_tipo(df_j)
 
-    render_desglose(df_j)
-
-    semana_j = (
-        df_j
-        .groupby(["semana", "semana_num"])["creditos"]
-        .sum()
-        .reset_index()
-    )
-
-    semana_j["creditos"] = (
-        semana_j["creditos"]
-        * FACTOR_AJUSTE
-    )
-
-    grafica_barras(
-        semana_j,
-        "semana",
-        "creditos",
-        "Consumo semanal journeys",
-        sort_field="semana_num"
-    )
-
-    top_paises(
-        df_j,
-        "🌎 Países con mayor consumo - Journeys"
-    )
-
-    # -----------------------
-    # PROYECCIÓN JOURNEYS
-    # -----------------------
-
-    subsection_header("🔮 Proyección Journeys")
-
-    dias_j = (
-        pd.to_datetime(filtro_fin)
-        -
-        pd.to_datetime(filtro_inicio)
-    ).days + 1
-
-    consumo_diario_j = (
-        creditos_j / dias_j
-        if dias_j > 0 else 0
-    )
-
-    consumo_diario_j_mkt = (
-        creditos_j_mkt / dias_j
-        if dias_j > 0 else 0
-    )
-
-    consumo_diario_j_uti = (
-        creditos_j_uti / dias_j
-        if dias_j > 0 else 0
-    )
-
-    deliveries_diario_j = (
-        deliveries_j / dias_j
-        if dias_j > 0 else 0
-    )
-
-    proy_creditos_j = (
-        consumo_diario_j * 7
-    )
-
-    proy_creditos_j_mkt = (
-        consumo_diario_j_mkt * 7
-    )
-
-    proy_creditos_j_uti = (
-        consumo_diario_j_uti * 7
-    )
-
-    proy_deliveries_j = (
-        deliveries_diario_j * 7
-    )
-
-    creditos_restantes_j = (
-        st.number_input(
-            "Créditos disponibles para estos journeys",
-            value=float(creditos_j)
-        )
-    )
-
-    if consumo_diario_j > 0:
-
-        dias_restantes_j = (
-            creditos_restantes_j /
-            consumo_diario_j
+        deliveries_j = (
+            df_j["WhatsApp Deliveries"].sum()
         )
 
-        fecha_agotamiento_j = (
+        c1, c2 = st.columns(2)
+
+        c1.metric(
+            "💳 Créditos consumidos",
+            f"{creditos_j:,.0f}"
+        )
+
+        c2.metric(
+            "📦 Deliveries",
+            f"{deliveries_j:,.0f}"
+        )
+
+        render_desglose(df_j)
+
+        semana_j = (
+            df_j
+            .groupby(["semana", "semana_num"])["creditos"]
+            .sum()
+            .reset_index()
+        )
+
+        semana_j["creditos"] = (
+            semana_j["creditos"]
+            * FACTOR_AJUSTE
+        )
+
+        grafica_barras(
+            semana_j,
+            "semana",
+            "creditos",
+            "Consumo semanal journeys",
+            sort_field="semana_num"
+        )
+
+        top_paises(
+            df_j,
+            "🌎 Países con mayor consumo - Journeys"
+        )
+
+        # PROYECCIÓN JOURNEYS
+
+        subsection_header("🔮 Proyección Journeys")
+
+        dias_j = (
             pd.to_datetime(filtro_fin)
-            +
-            pd.Timedelta(
-                days=dias_restantes_j
+            -
+            pd.to_datetime(filtro_inicio)
+        ).days + 1
+
+        consumo_diario_j = (
+            creditos_j / dias_j
+            if dias_j > 0 else 0
+        )
+
+        consumo_diario_j_mkt = (
+            creditos_j_mkt / dias_j
+            if dias_j > 0 else 0
+        )
+
+        consumo_diario_j_uti = (
+            creditos_j_uti / dias_j
+            if dias_j > 0 else 0
+        )
+
+        deliveries_diario_j = (
+            deliveries_j / dias_j
+            if dias_j > 0 else 0
+        )
+
+        proy_creditos_j = (
+            consumo_diario_j * 7
+        )
+
+        proy_creditos_j_mkt = (
+            consumo_diario_j_mkt * 7
+        )
+
+        proy_creditos_j_uti = (
+            consumo_diario_j_uti * 7
+        )
+
+        proy_deliveries_j = (
+            deliveries_diario_j * 7
+        )
+
+        creditos_restantes_j = (
+            st.number_input(
+                "Créditos disponibles para estos journeys",
+                value=float(creditos_j),
+                key=f"{tab_key}_creditos_restantes_j"
             )
         )
 
-    else:
-        fecha_agotamiento_j = None
+        if consumo_diario_j > 0:
 
-    c1, c2, c3 = st.columns(3)
+            dias_restantes_j = (
+                creditos_restantes_j /
+                consumo_diario_j
+            )
 
-    c1.metric(
-        "💳 Créditos próxima semana",
-        f"{proy_creditos_j:,.0f}"
-    )
+            fecha_agotamiento_j = (
+                pd.to_datetime(filtro_fin)
+                +
+                pd.Timedelta(
+                    days=dias_restantes_j
+                )
+            )
 
-    c2.metric(
-        "📦 Deliveries próxima semana",
-        f"{proy_deliveries_j:,.0f}"
-    )
+        else:
+            fecha_agotamiento_j = None
 
-    c3.metric(
-        "⏳ Agotamiento",
-        fecha_agotamiento_j.strftime("%Y-%m-%d")
-        if fecha_agotamiento_j else "N/A"
-    )
+        c1, c2, c3 = st.columns(3)
 
-    st.markdown(
-        f"""
-        <div class="desglose-box">
-            <span class="desglose-item mkt">📣 Marketing: <b>{proy_creditos_j_mkt:,.0f}</b></span>
-            <span class="desglose-item uti">🔧 Utility: <b>{proy_creditos_j_uti:,.0f}</b></span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        c1.metric(
+            "💳 Créditos próxima semana",
+            f"{proy_creditos_j:,.0f}"
+        )
 
-section_divider()
+        c2.metric(
+            "📦 Deliveries próxima semana",
+            f"{proy_deliveries_j:,.0f}"
+        )
+
+        c3.metric(
+            "⏳ Agotamiento",
+            fecha_agotamiento_j.strftime("%Y-%m-%d")
+            if fecha_agotamiento_j else "N/A"
+        )
+
+        st.markdown(
+            f"""
+            <div class="desglose-box">
+                <span class="desglose-item mkt">📣 Marketing: <b>{proy_creditos_j_mkt:,.0f}</b></span>
+                <span class="desglose-item uti">🔧 Utility: <b>{proy_creditos_j_uti:,.0f}</b></span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    section_divider()
+
+    # -----------------------
+    # DETALLE
+    # -----------------------
+
+    section_header("🔍 Detalle")
+
+    st.dataframe(df_filtrado)
+
 
 # -----------------------
-# DETALLE
+# TÍTULO Y PESTAÑAS
 # -----------------------
 
-section_header("🔍 Detalle")
+st.title("📊 Dashboard Créditos WhatsApp")
 
-st.dataframe(df_filtrado)
+if not (df["WhatsApp Channel ID"] == CANAL_UCP).any() and not (df["WhatsApp Channel ID"] == CANAL_OUTBOUND).any():
+    st.warning(
+        "El archivo cargado no trae la columna/valores de 'WhatsApp Channel ID' "
+        "esperados. Las pestañas UCP y Outbound quedarán sin datos hasta que el "
+        "reporte incluya esa información."
+    )
+
+tab_general, tab_ucp, tab_outbound = st.tabs(["General", "UCP", "Outbound"])
+
+with tab_general:
+    render_dashboard(df, creditos_totales_general, map_creditos_general, "general")
+
+with tab_ucp:
+    df_ucp = df[df["WhatsApp Channel ID"] == CANAL_UCP]
+    render_dashboard(df_ucp, creditos_totales_ucp, map_creditos_ucp, "ucp")
+
+with tab_outbound:
+    df_outbound = df[df["WhatsApp Channel ID"] == CANAL_OUTBOUND]
+    render_dashboard(df_outbound, creditos_totales_outbound, map_creditos_outbound, "outbound")
