@@ -166,6 +166,11 @@ def publicar(cfg: dict, fecha_txt: str) -> None:
     commit = git("commit", "-m", cfg["mensaje_commit"].format(fecha=fecha_txt))
     if commit.returncode != 0 and "nothing to commit" not in (commit.stdout + commit.stderr):
         raise RuntimeError(f"git commit falló: {commit.stderr.strip() or commit.stdout.strip()}")
+    # Si alguien subió cambios mientras tanto, se traen antes de subir para que el push no se rechace
+    traer = git("pull", "--rebase", "--autostash")
+    if traer.returncode != 0:
+        git("rebase", "--abort")
+        raise RuntimeError(f"git pull falló (¿cambios en conflicto?): {traer.stderr.strip()}")
     push = git("push")
     if push.returncode != 0:
         raise RuntimeError(f"git push falló: {push.stderr.strip()}")
