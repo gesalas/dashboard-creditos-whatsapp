@@ -1,0 +1,10 @@
+{
+  "buzon": "",
+  "carpeta": "",
+  "asunto_contiene": "Marketing Report: Data",
+  "remitente_contiene": "",
+  "adjunto_contiene": "Data-",
+  "dias_a_revisar": 7,
+  "publicar_en_github": false,
+  "mensaje_commit": "Actualiza data.xlsx con el reporte del {fecha}"
+}

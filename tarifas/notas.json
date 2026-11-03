@@ -1,0 +1,3 @@
+{
+  "2025-12-01": "No se encontró el PDF oficial de esta vigencia (el enlace de la página de archivo de Salesforce lleva a la tabla de mayo 2026). Se usa la tabla que traía el dashboard (tarifas.csv); sus valores quedan entre la tabla de agosto 2025 y la de mayo 2026 (por ejemplo, Utility Colombia 0,99 y Estados Unidos 4,94), lo que es consistente con la vigencia de diciembre 2025 a abril 2026. Confirmar con Salesforce si se requiere el valor oficial."
+}

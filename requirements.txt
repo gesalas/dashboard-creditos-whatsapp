@@ -1,3 +1,6 @@
-streamlit
-pandas
+streamlit>=1.50
+pandas>=2.0
+numpy
+altair>=5
 openpyxl
+pywin32; sys_platform == "win32"

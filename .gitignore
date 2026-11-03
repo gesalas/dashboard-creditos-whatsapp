@@ -1,0 +1,7 @@
+alertas_estado.json
+alertas.log
+*.tmp
+__pycache__/
+vista_previa/
+data_anterior.xlsx
+actualizar_datos.log

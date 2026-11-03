@@ -1,0 +1,4 @@
+Coloca aquí las imágenes oficiales (no se incluyen en el repositorio):
+- logo_javeriana.png  (logo de la universidad, se muestra en la barra lateral)
+- icono_whatsapp.png  (opcional; se muestra junto al título y en la pestaña del navegador)
+También sirven en .jpg o .svg. Si no están, el dashboard usa el nombre de la universidad y un ícono genérico de chat.

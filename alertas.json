@@ -1,0 +1,64 @@
+{
+  "plantilla": {
+    "url_dashboard": "",
+    "firma": {
+      "nombre": "Equipo CRM",
+      "area": "Dirección de Tecnologías de Información",
+      "institucion": "Pontificia Universidad Javeriana",
+      "direccion": [
+        "Edificio Emilio Arango S.J, Piso 7",
+        "Cra 7 # 42-60",
+        "Bogotá, Colombia"
+      ],
+      "correo": ""
+    }
+  },
+  "umbrales_pct": [
+    95
+  ],
+  "revisar": {
+    "general": true,
+    "lineas": true
+  },
+  "unidades": {
+    "activo": true,
+    "umbrales_pct": [
+      80,
+      95
+    ],
+    "responsables": {
+      "mercadeo": [],
+      "egresados": [],
+      "donaciones": []
+    },
+    "resumen_semanal": {
+      "activo": false,
+      "dia": "lunes"
+    }
+  },
+  "fecha_inicio_conteo": null,
+  "aviso_reporte_desactualizado_dias": 7,
+  "windows": {
+    "activo": true
+  },
+  "outlook": {
+    "activo": true,
+    "destinatarios": [
+      "gesalas@javeriana.edu.co",
+      "jsebastian.cruz@javeriana.edu.co"
+    ]
+  },
+  "teams": {
+    "activo": false,
+    "variable_webhook": "ALERTA_TEAMS_WEBHOOK"
+  },
+  "correo": {
+    "activo": false,
+    "servidor": "smtp.office365.com",
+    "puerto": 587,
+    "usuario": "",
+    "remitente": "",
+    "destinatarios": [],
+    "variable_contrasena": "ALERTA_SMTP_PASSWORD"
+  }
+}

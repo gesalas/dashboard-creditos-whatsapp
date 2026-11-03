@@ -1,5 +1,18 @@
 {
-  "general": {"creditos_totales": 21935456, "unidades": {"MERCA": 14495867, "EGRES": 60000, "DONAC": 40000}},
+  "compras": [
+    {"fecha": "2026-01-01", "linea": "UCP", "creditos": 1292456, "nota": "Créditos iniciales de UCP (valor del dashboard original)"},
+    {"fecha": "2026-01-01", "linea": "Outbound", "creditos": 20643000, "nota": "Créditos iniciales de Outbound (valor del dashboard original)"}
+  ],
+  "general": {"creditos_totales": 21935456, "unidades": {"MERCA": 15788323, "EGRES": 30000, "DONAC": 20000}},
   "ucp": {"creditos_totales": 1292456, "unidades": {"MERCA": 1292456, "EGRES": 0, "DONAC": 0}},
-  "outbound": {"creditos_totales": 20643000, "unidades": {"MERCA": 14495867, "EGRES": 30000, "DONAC": 20000}}
+  "outbound": {"creditos_totales": 20643000, "unidades": {"MERCA": 14495867, "EGRES": 30000, "DONAC": 20000}},
+  "unidades": [
+    {"clave": "mercadeo", "nombre": "Mercadeo", "codigo": "MERCA", "prefijos": ["MERCA"]},
+    {"clave": "egresados", "nombre": "Egresados", "codigo": "EGRES", "prefijos": ["EGRES"]},
+    {"clave": "donaciones", "nombre": "Donaciones", "codigo": "DONAC", "prefijos": ["DONAC"]}
+  ],
+  "unidad_por_defecto": "mercadeo",
+  "journeys": {},
+  "semaforo": {"amarillo_pct": 80, "rojo_pct": 95, "fecha_inicio_conteo": null},
+  "marca": {"institucion": "Pontificia Universidad Javeriana", "area": "DTI · Equipo CRM", "producto": "Créditos de WhatsApp"}
 }
