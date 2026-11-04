@@ -27,9 +27,12 @@
       95
     ],
     "responsables": {
-      "mercadeo": [],
-      "egresados": [],
-      "donaciones": []
+      "mercadeo": ["gesalas@javeriana.edu.co",
+      "jsebastian.cruz@javeriana.edu.co"],
+      "egresados": ["gesalas@javeriana.edu.co",
+      "jsebastian.cruz@javeriana.edu.co"],
+      "donaciones": ["gesalas@javeriana.edu.co",
+      "jsebastian.cruz@javeriana.edu.co"]
     },
     "resumen_semanal": {
       "activo": false,
