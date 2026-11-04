@@ -210,11 +210,29 @@ st.markdown(
     .punto-ok {background: #2E9A4E;}
     .punto-alerta {background: #D99A00;}
     [data-testid="stSidebar"] [data-testid="stExpander"] details {background: #FFFFFF; border-radius: 14px;}
-    [class*="st-key-zona-canal"] [data-testid="stButtonGroup"] button {padding: 8px 18px; font-size: 0.98rem;
-                                                                       font-weight: 600;}
-    [class*="st-key-zona-canal"] [data-testid="stBaseButton-segmented_controlActive"] {background: #1F3864;
-                                                                       color: #FFFFFF; border-color: #1F3864;}
-    [class*="st-key-zona-canal"] {gap: 0.6rem; margin: 6px 0 4px 0;}
+    [class*="st-key-zona-canal"] {background: #FFFFFF; border: 1px solid #E3E7EE; border-radius: 14px;
+                                  padding: 14px 16px 12px 16px; margin: 10px 0 6px 0; gap: 0.35rem;
+                                  box-shadow: 0 1px 3px rgba(16,24,40,0.05);}
+    .zona-etiqueta {font-size: 0.78rem; font-weight: 700; color: #52514e; letter-spacing: 0.05em;
+                    text-transform: uppercase; margin: 2px 0 2px 2px;}
+    .zona-nota {font-size: 0.78rem; color: #6B6F76; margin: 0 0 2px 2px;}
+    [class*="st-key-zona-canal"] [role="radiogroup"] {gap: 10px; flex-wrap: wrap;}
+    [class*="st-key-zona-canal"] button[data-variant="segmented_control"] {
+        border: 1.5px solid #C9D3E3 !important; border-radius: 12px !important; background: #FFFFFF;
+        padding: 10px 20px; min-height: 46px; box-shadow: 0 1px 2px rgba(16,24,40,0.06); transition: all .12s;}
+    [class*="st-key-zona-canal"] button[data-variant="segmented_control"] p {font-size: 1rem; font-weight: 600;
+                                                                             color: #1B1F24;}
+    [class*="st-key-zona-canal"] button[data-variant="segmented_control"]:hover {border-color: #1F3864 !important;
+                                                                                 background: #F3F6FB;}
+    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"] {
+        background: #1F3864; border-color: #1F3864 !important; box-shadow: 0 3px 8px rgba(31,56,100,0.25);}
+    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"] p,
+    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"] span {color: #FFFFFF;}
+    [class*="st-key-linea"] button[data-variant="segmented_control"] {min-height: 40px; padding: 7px 16px;}
+    [class*="st-key-zona-canal"] .stMarkdown [data-testid="stMarkdownContainer"] {margin-bottom: 0;}
+    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"]:hover {
+        background: #2C4F8C; border-color: #2C4F8C !important;}
+    [class*="st-key-linea"] button[data-variant="segmented_control"] p {font-size: 0.93rem;}
     .barra-canales {display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: #E3E7EE;
                     margin: 6px 0 8px 0;}
     .barra-canales .seg {height: 100%;}
@@ -925,20 +943,34 @@ if st.session_state.get("linea_guardada") not in VISTAS_LINEA:
 
 zona_titulo = st.container()
 zona_canal = st.container(key="zona-canal")
+ICONO_CANAL = {"todos": ":material/dashboard:", "whatsapp": ":material/forum:", "correo": ":material/mail:",
+               "sms": ":material/sms:"}
+ICONO_LINEA = {"Ambas líneas": ":material/join:", "UCP vs Outbound": ":material/compare_arrows:",
+               "UCP": ":material/call:", "Outbound": ":material/campaign:"}
+
+
+def telefono(numero: str) -> str:
+    """573102190903 -> +57 310 219 0903."""
+    n = str(numero)
+    return f"+{n[:2]} {n[2:5]} {n[5:8]} {n[8:]}" if len(n) == 12 else n
+
+
 with zona_canal:
-    canal = st.segmented_control("Canal", OPCIONES_CANAL, key="canal", format_func=lambda c: NOMBRE_CANAL[c],
+    st.markdown('<div class="zona-etiqueta">¿Qué canal quieres ver?</div>', unsafe_allow_html=True)
+    canal = st.segmented_control("Canal", OPCIONES_CANAL, key="canal",
+                                 format_func=lambda c: f"{ICONO_CANAL[c]} {NOMBRE_CANAL[c]}",
                                  label_visibility="collapsed") or "whatsapp"
     st.query_params["canal"] = canal
     if canal == "whatsapp":
         if st.session_state.get("linea") not in VISTAS_LINEA:
             st.session_state["linea"] = st.session_state["linea_guardada"]
+        st.markdown('<div class="zona-etiqueta">Línea de WhatsApp</div>', unsafe_allow_html=True)
         vista_linea = st.segmented_control(
             "Línea de WhatsApp", VISTAS_LINEA, key="linea", label_visibility="collapsed",
-            format_func=lambda v: {"Ambas líneas": "Ambas líneas", "UCP vs Outbound": "UCP vs Outbound",
-                                   "UCP": f"UCP · {L.LINEAS['UCP']}",
-                                   "Outbound": f"Outbound · {L.LINEAS['Outbound']}"}[v],
-            help="UCP y Outbound son los dos números de WhatsApp, cada uno con su propia bolsa de créditos.") \
-            or "Ambas líneas"
+            format_func=lambda v: f"{ICONO_LINEA[v]} {v}") or "Ambas líneas"
+        st.markdown(f'<div class="zona-nota">UCP y Outbound son los dos números de WhatsApp de la universidad '
+                    f'(UCP: {telefono(L.LINEAS["UCP"])} · Outbound: {telefono(L.LINEAS["Outbound"])}), cada uno '
+                    f'con su propia bolsa de créditos.</div>', unsafe_allow_html=True)
         st.session_state["linea_guardada"] = vista_linea
     else:
         vista_linea = "Ambas líneas"
@@ -1227,6 +1259,10 @@ def bloque_estado() -> None:
             with col:
                 tarjeta(estados[nombre_l], detalle=True)
                 st.caption(texto_variacion(estados[nombre_l]))
+                if not unidad_sel:
+                    filas = [fila_medidor(NOMBRE_UNIDAD_APP[u], estado_de(nombre_l, u)) for u in L.UNIDADES]
+                    st.markdown(f'<div class="panel-unidades"><div class="panel-titulo">Unidades en {nombre_l}</div>'
+                                f'{"".join(filas)}</div>', unsafe_allow_html=True)
     else:
         e = estados[linea]
         col_card, col_lado = st.columns([1.35, 1])
