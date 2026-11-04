@@ -1,10 +1,10 @@
 {
   "compras": [
-    {"fecha": "2026-01-01", "linea": "UCP", "creditos": 1292456, "nota": "Créditos iniciales de UCP (valor del dashboard original)"},
+    {"fecha": "2026-01-01", "linea": "UCP", "creditos": 4630000, "nota": "Créditos iniciales de UCP (valor del dashboard original)"},
     {"fecha": "2026-01-01", "linea": "Outbound", "creditos": 20643000, "nota": "Créditos iniciales de Outbound (valor del dashboard original)"}
   ],
   "general": {"creditos_totales": 21935456, "unidades": {"MERCA": 15788323, "EGRES": 30000, "DONAC": 20000}},
-  "ucp": {"creditos_totales": 1292456, "unidades": {"MERCA": 1292456, "EGRES": 0, "DONAC": 0}},
+  "ucp": {"creditos_totales": 4630000, "unidades": {"MERCA": 4630000, "EGRES": 0, "DONAC": 0}},
   "outbound": {"creditos_totales": 20643000, "unidades": {"MERCA": 14495867, "EGRES": 30000, "DONAC": 20000}},
   "unidades": [
     {"clave": "mercadeo", "nombre": "Mercadeo", "codigo": "MERCA", "prefijos": ["MERCA"]},
