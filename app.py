@@ -921,7 +921,7 @@ def estado_de(nombre_linea: str, unidad: str | None = None) -> dict:
         "disponible_hoy": disponible_hoy, "consumido_hoy": consumido_hoy, "restan": disponible_hoy - consumido_hoy,
         "uso": uso, "estado": L.estado_consumo(uso * 100 if uso is not None else None, amarillo_pct, rojo_pct),
         "agotamiento": "No aplica" if disponible_hoy <= 0 else "Sin consumo", "semana": None,
-        "ult7": 0.0, "prev7": 0.0, "proyeccion": None,
+        "ult7": 0.0, "prev7": 0.0, "proyeccion": None, "agot_ts": None, "ritmo": 0.0, "agot_linea": None,
     }
     if not datos.empty:
         fin_l = fin_datos
@@ -931,11 +931,39 @@ def estado_de(nombre_linea: str, unidad: str | None = None) -> dict:
         proy_l = L.proyeccion(datos, ref_ini, fin_l, info["restan"], tarifas=tarifas)
         info["semana"] = proy_l["semana"]
         info["proyeccion"] = proy_l
+        info["ritmo"] = proy_l["diario"]["creditos"]
         if disponible_hoy > 0:
-            agot_l = proy_l["agotamiento"]
-            info["agotamiento"] = ("Ya agotados" if agot_l == "agotado"
-                                   else f"{agot_l:%d/%m/%Y}" if isinstance(agot_l, pd.Timestamp) else "Sin consumo")
+            info["agot_ts"] = proy_l["agotamiento"]
+            info["agotamiento"] = texto_agotamiento(info["agot_ts"])
     info["usado_periodo"] = float(periodo_e["creditos"].sum()) + est_periodo["creditos"]
+    if L.LINEAS[nombre_linea] is None:
+        # UCP y Outbound son bolsas separadas: lo que sobra en una no cubre a la otra. El total se agota
+        # cuando se agota la primera línea, no cuando se acaba la suma de las dos.
+        primera = primera_en_agotarse({l: estado_de(l, unidad) for l in LINEAS_COMPRA})
+        if primera:
+            info["agot_ts"], info["agot_linea"], info["ritmo"] = primera
+            info["agotamiento"] = texto_agotamiento(info["agot_ts"])
+    return info
+
+
+def texto_agotamiento(agot) -> str:
+    return ("Ya agotados" if agot == "agotado" else f"{agot:%d/%m/%Y}" if isinstance(agot, pd.Timestamp)
+            else "Sin consumo")
+
+
+def primera_en_agotarse(por_linea: dict[str, dict]) -> tuple | None:
+    """(fecha o "agotado", línea, ritmo diario) de la línea que se agota primero, entre las que tienen créditos."""
+    candidatas = []
+    for nombre_l, e_l in por_linea.items():
+        a = e_l["agot_ts"]
+        if a == "agotado":
+            candidatas.append((pd.Timestamp.min, a, nombre_l, e_l["ritmo"]))
+        elif isinstance(a, pd.Timestamp):
+            candidatas.append((a, a, nombre_l, e_l["ritmo"]))
+    if not candidatas:
+        return None
+    _, agot, nombre_l, ritmo = min(candidatas, key=lambda c: c[0])
+    return agot, nombre_l, ritmo
     return info
 
 
@@ -944,6 +972,14 @@ def etiqueta_corte() -> str:
     if futuro:
         return f"estimado al {fin:%d/%m/%Y}"
     return "usado a la fecha" if fin >= fin_datos else f"usado al {fin:%d/%m/%Y}"
+
+
+def detalle_agotamiento(e: dict) -> str:
+    """Debajo de la fecha: con qué ritmo se calculó y, en el total, qué línea se agota primero."""
+    if not isinstance(e["agot_ts"], pd.Timestamp):
+        return ""
+    linea_txt = f"primero {e['agot_linea']} · " if e["agot_linea"] else ""
+    return f'<div class="cifra-sub">{linea_txt}a {num(e["ritmo"])} créditos/día (últimos {REF_DIAS} días)</div>'
 
 
 def cifras_basicas(e: dict) -> list[tuple]:
@@ -957,7 +993,7 @@ def cifras_basicas(e: dict) -> list[tuple]:
         (e["etiqueta_disponible"] + ("" if al == "a la fecha" else f" {al}"), num(e["disponible"]) if hay else "Sin definir"),
         (("Excedido" if e["restan_corte"] < 0 else "Disponibles") + (" hoy" if al == "a la fecha" else f" {al}"),
          num(abs(e["restan_corte"])) if hay else "-"),
-        ("Agotamiento estimado", e["agotamiento"]),
+        ("Agotamiento estimado", e["agotamiento"] + detalle_agotamiento(e)),
     ]
     return cifras
 
@@ -1285,11 +1321,24 @@ def bloque_proyeccion(nombre_l: str, contenedor, clave: str) -> None:
             p1, p2, p3 = st.columns(3)
             p1.metric("Créditos próxima semana", num(proy["semana"]["creditos"]))
             p2.metric("Entregas próxima semana", num(proy["semana"]["deliveries"]))
-            agot = proy["agotamiento"]
+            agot, ayuda = proy["agotamiento"], f"Con el ritmo del {inicio_ref:%d/%m/%Y} al {fin_ref:%d/%m/%Y}: {num(proy['diario']['creditos'])} créditos/día."
+            if L.LINEAS[nombre_l] is None:
+                # Bolsas separadas: el total se agota cuando se agota la primera línea
+                por_linea = {}
+                for l_ in LINEAS_COMPRA:
+                    d_ = filtrar(envios, l_, unidad_sel)
+                    if estados[l_]["disponible_hoy"] > 0 and not d_.empty:
+                        p_ = L.proyeccion(d_, inicio_ref, fin_ref, estados[l_]["restan"], desde=fin_datos, tarifas=tarifas)
+                        por_linea[l_] = {"agot_ts": p_["agotamiento"], "ritmo": p_["diario"]["creditos"]}
+                primera = primera_en_agotarse(por_linea)
+                if primera:
+                    agot = primera[0]
+                    ayuda += (f" UCP y Outbound son bolsas separadas: esta es la fecha en que se agota la primera "
+                              f"({primera[1]}).")
             p3.metric("Agotamiento estimado",
                       "No aplica" if e["disponible_hoy"] <= 0 else
                       "Ya agotados" if agot == "agotado" else (f"{agot:%d/%m/%Y}" if agot is not None else "Sin consumo"),
-                      help=None if e["disponible_hoy"] > 0 else "No hay créditos asignados para calcularlo.")
+                      help=ayuda if e["disponible_hoy"] > 0 else "No hay créditos asignados para calcularlo.")
             st.markdown(desglose(proy["semana"]["creditos_marketing"], proy["semana"]["creditos_utility"]),
                         unsafe_allow_html=True)
             dias_h = (hasta - fin_datos).days
