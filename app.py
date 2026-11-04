@@ -210,6 +210,22 @@ st.markdown(
     .punto-ok {background: #2E9A4E;}
     .punto-alerta {background: #D99A00;}
     [data-testid="stSidebar"] [data-testid="stExpander"] details {background: #FFFFFF; border-radius: 14px;}
+    [class*="st-key-zona-canal"] [data-testid="stButtonGroup"] button {padding: 8px 18px; font-size: 0.98rem;
+                                                                       font-weight: 600;}
+    [class*="st-key-zona-canal"] [data-testid="stBaseButton-segmented_controlActive"] {background: #1F3864;
+                                                                       color: #FFFFFF; border-color: #1F3864;}
+    [class*="st-key-zona-canal"] {gap: 0.6rem; margin: 6px 0 4px 0;}
+    .barra-canales {display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: #E3E7EE;
+                    margin: 6px 0 8px 0;}
+    .barra-canales .seg {height: 100%;}
+    .leyenda-canales {display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85rem; color: #52514e;
+                      margin-bottom: 14px;}
+    .leyenda-canales i {display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px;}
+    .leyenda-canales b {color: #1B1F24;}
+    .cifra-grande {font-size: 1.9rem; font-weight: 700; color: #1B1F24; margin: 2px 0 0 0;}
+    .cifra-grande small {font-size: 0.95rem; font-weight: 500; color: #52514e;}
+    .canal-pendiente {background: #F8F9FB; border-left-width: 6px; min-height: 170px;}
+    .pendiente-texto {font-size: 0.88rem; color: #52514e; margin-top: 14px; line-height: 1.45;}
     </style>
     """,
     unsafe_allow_html=True,
@@ -285,6 +301,26 @@ def insignia(estado: str) -> str:
             f'border:1px solid {borde};">{etiqueta}</span>')
 
 
+COLOR_TARIFA = "#8A6100"   # línea de cambio de tarifa en las gráficas
+
+
+def etiqueta_semana(fecha: pd.Timestamp) -> str:
+    """Igual que la columna "semana" de los datos: "S44 · 26/10"."""
+    lunes = (fecha - pd.Timedelta(days=fecha.weekday())).normalize()
+    return f"S{fecha.isocalendar()[1]:02d} · {lunes:%d/%m}"
+
+
+def marcas_tarifa(por: str) -> list[tuple[str, str]]:
+    """Categorías (semana o mes) en que empezó a regir una tabla de tarifas nueva."""
+    if por not in ("semana", "mes"):
+        return []
+    marcas = []
+    for f in L.vigencias(tarifas)[1:]:
+        cat = etiqueta_semana(f) if por == "semana" else nombre_mes(f"{f:%Y-%m}")
+        marcas.append((cat, f"Tarifa {f:%d/%m}"))
+    return marcas
+
+
 EJE_NUMERO = "replace(format(datum.value, ',.0f'), regexp(',', 'g'), '.')"
 TIPOS = ("Marketing", "Utility")
 COLOR_TIPO = {"Marketing": COLOR_MARKETING, "Utility": COLOR_UTILITY}
@@ -304,8 +340,11 @@ def _config_grafica(chart: alt.Chart, altura: int) -> alt.Chart:
 def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizontal: bool = False,
                    orden: str | list | None = None, titulo_valor: str = "Créditos",
                    altura: int | None = None, color: str = COLOR_SERIE,
-                   dominio_max: float | None = None, estrecho: bool = False) -> None:
+                   dominio_max: float | None = None, estrecho: bool = False,
+                   marcas: list[tuple[str, str]] | None = None) -> None:
     """Barras de una sola serie con el valor escrito sobre cada barra.
+
+    `marcas`: [(categoría, texto)] para dibujar una línea vertical punteada (por ejemplo, cambios de tarifa).
 
     `estrecho`: la gráfica va en media pantalla (comparativo), así que las etiquetas se giran antes.
 
@@ -344,7 +383,16 @@ def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizonta
     )
     barras = base.mark_bar(color=color, cornerRadiusEnd=3)
     textos = base.mark_text(color=COLOR_TEXTO, **texto_kw).encode(text="_etiqueta:N")
-    st.altair_chart(_config_grafica(barras + textos, altura), width="stretch")
+    capa = barras + textos
+    presentes = set(datos[categoria])
+    marcas = [(c, t) for c, t in (marcas or []) if c in presentes]
+    if marcas and not horizontal:
+        m = pd.DataFrame([{categoria: c, "_txt": t} for c, t in marcas])
+        x_m = alt.X(f"{categoria}:N", sort=orden_eje, bandPosition=0, axis=eje_cat)
+        capa = (capa + alt.Chart(m).mark_rule(color=COLOR_TARIFA, strokeDash=[5, 4], strokeWidth=1.6).encode(x=x_m)
+                + alt.Chart(m).mark_text(align="left", baseline="top", dx=4, fontSize=10, fontWeight=600,
+                                         color=COLOR_TARIFA).encode(x=x_m, y=alt.value(2), text="_txt:N"))
+    st.altair_chart(_config_grafica(capa, altura), width="stretch")
 
 
 def titulo_tipo(tipo: str, texto: str = "") -> None:
@@ -355,7 +403,8 @@ def titulo_tipo(tipo: str, texto: str = "") -> None:
 
 def grafica_tipo(datos: pd.DataFrame, categoria: str, tipo: str, *, medida: str = "creditos",
                  orden: str | list | None = None, horizontal: bool = False, top: int | None = None,
-                 altura: int | None = None, dominio_max: float | None = None, estrecho: bool = False) -> None:
+                 altura: int | None = None, dominio_max: float | None = None, estrecho: bool = False,
+                 marcas: list[tuple[str, str]] | None = None) -> None:
     """Gráfica de un solo tipo de mensaje (Marketing o Utility), en créditos o en entregas."""
     columna = f"{medida}_{tipo.lower()}"
     if datos.empty or float(datos[columna].sum()) <= 0:
@@ -366,7 +415,7 @@ def grafica_tipo(datos: pd.DataFrame, categoria: str, tipo: str, *, medida: str 
         vista = vista[vista[columna] > 0].nlargest(top, columna)
     grafica_barras(vista, categoria, columna, horizontal=horizontal, orden=orden,
                    titulo_valor=f"{NOMBRE_MEDIDA[medida]} {tipo}", color=COLOR_TIPO[tipo],
-                   altura=altura, dominio_max=dominio_max, estrecho=estrecho)
+                   altura=altura, dominio_max=dominio_max, estrecho=estrecho, marcas=marcas)
 
 
 MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
@@ -401,7 +450,8 @@ def graficas_por_tipo(datos: pd.DataFrame, por: str, medida: str, *, horizontal:
     tabla_g, orden = agrupar(datos, por)
     for tipo in TIPOS:
         titulo_tipo(tipo, texto or NOMBRE_MEDIDA[medida])
-        grafica_tipo(tabla_g, por, tipo, medida=medida, orden=orden, horizontal=horizontal, top=top)
+        grafica_tipo(tabla_g, por, tipo, medida=medida, orden=orden, horizontal=horizontal, top=top,
+                     marcas=marcas_tarifa(por))
 
 
 def graficas_versus(datos_por_linea: dict[str, pd.DataFrame], por: str, medida: str, *,
@@ -430,7 +480,7 @@ def graficas_versus(datos_por_linea: dict[str, pd.DataFrame], por: str, medida: 
             with col:
                 titulo_tipo(tipo, f"{nombre_l} · {NOMBRE_MEDIDA[medida]}")
                 grafica_tipo(t, por, tipo, medida=medida, orden=orden, horizontal=horizontal, top=top,
-                             dominio_max=dominio, estrecho=True)
+                             dominio_max=dominio, estrecho=True, marcas=marcas_tarifa(por))
 
 
 def selector_medida(clave: str) -> str:
@@ -612,14 +662,19 @@ def aplicar_ediciones(base: pd.DataFrame, estado: dict | None) -> pd.DataFrame:
     return tabla_c
 
 
+COL_PRECIO = "Precio por 1.000 (USD)"
+
+
 def tabla_compras(config: dict) -> pd.DataFrame:
     filas = []
     for c in config.get("compras", []) or []:
         fecha_c = pd.to_datetime(c.get("fecha"), errors="coerce")
         filas.append({"Fecha": fecha_c.date() if pd.notna(fecha_c) else None,
                       "Línea": c.get("linea") if c.get("linea") in LINEAS_COMPRA else None,
-                      "Créditos": float(c.get("creditos") or 0), "Nota": str(c.get("nota") or "")})
-    return pd.DataFrame(filas, columns=["Fecha", "Línea", "Créditos", "Nota"])
+                      "Créditos": float(c.get("creditos") or 0),
+                      COL_PRECIO: float(c["precio_usd_1000"]) if c.get("precio_usd_1000") else None,
+                      "Nota": str(c.get("nota") or "")})
+    return pd.DataFrame(filas, columns=["Fecha", "Línea", "Créditos", COL_PRECIO, "Nota"])
 
 
 def aplicar_ediciones_compras(base: pd.DataFrame, estado: dict | None) -> pd.DataFrame:
@@ -636,6 +691,7 @@ def aplicar_ediciones_compras(base: pd.DataFrame, estado: dict | None) -> pd.Dat
         tabla_c = pd.concat([tabla_c, pd.DataFrame(nuevas)], ignore_index=True)
     tabla_c["Créditos"] = pd.to_numeric(tabla_c["Créditos"], errors="coerce").fillna(0.0)
     tabla_c["Nota"] = tabla_c["Nota"].fillna("").astype(str)
+    tabla_c[COL_PRECIO] = pd.to_numeric(tabla_c.get(COL_PRECIO), errors="coerce")
     tabla_c["Fecha"] = pd.to_datetime(tabla_c["Fecha"], errors="coerce").dt.date
     return tabla_c.reset_index(drop=True)
 
@@ -669,6 +725,55 @@ def adquirido_al(nombre_linea: str, hasta: pd.Timestamp | None) -> float:
     filas = compras_vigentes[compras_vigentes["Línea"] == nombre_linea]
     fechas = pd.to_datetime(filas["Fecha"], errors="coerce")
     return float(filas.loc[fechas.isna() | (fechas <= hasta), "Créditos"].sum())
+
+
+# Dinero: precio por 1.000 créditos de cada canal (editable en Todos los canales → Configuración) y, en
+# WhatsApp, el precio promedio de cada bolsa según sus compras (cada compra puede tener su propio precio).
+PRECIOS = L.precios_canal(config)
+PRECIOS_OK = L.precios_confirmados(config)
+
+
+def precio_linea(nombre_linea: str) -> float | None:
+    """USD por 1.000 créditos de la bolsa de una línea de WhatsApp."""
+    compras_l = [{"linea": r["Línea"], "creditos": r["Créditos"], "precio_usd_1000": r[COL_PRECIO]}
+                 for _, r in compras_vigentes.iterrows()]
+    return L.precio_promedio(compras_l, nombre_linea, PRECIOS["whatsapp"])
+
+
+PRECIO_LINEA = {l: precio_linea(l) for l in LINEAS_COMPRA}
+
+
+def usd_de(datos: pd.DataFrame, columna: str = "creditos") -> float | None:
+    """Dólares de unas entregas de WhatsApp, cada una con el precio de la bolsa de su línea."""
+    if datos.empty:
+        return 0.0
+    total, alguno = 0.0, False
+    for l, grupo in datos.groupby("linea"):
+        precio = PRECIO_LINEA.get(l)
+        if precio is not None:
+            total += float(grupo[columna].sum()) * precio / 1000
+            alguno = True
+    return total if alguno else None
+
+
+def usd_creditos(creditos: float, nombre_linea: str) -> float | None:
+    if L.LINEAS.get(nombre_linea) is None:
+        return None
+    precio = PRECIO_LINEA.get(nombre_linea)
+    return None if precio is None else creditos * precio / 1000
+
+
+def txt_usd(valor: float | None, signo: bool = False) -> str:
+    if valor is None:
+        return "sin precio"
+    return ("-" if valor < 0 and signo else "") + f"US$ {num(abs(valor) if signo else valor)}"
+
+
+ESTIMADO_USD = "" if PRECIOS_OK.get("whatsapp") else " (estimado)"
+
+
+def txt_precio(valor: float | None) -> str:
+    return "-" if valor is None else f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 _ed_compras = st.session_state.get("editor_compras") or {}
@@ -726,14 +831,6 @@ with st.sidebar:
     elif "unidad" in st.query_params:
         del st.query_params["unidad"]
 
-    if st.session_state.get("linea") not in VISTAS_LINEA:
-        st.session_state["linea"] = "Ambas líneas"
-    with st.container(key="lado-linea"):
-        titulo_lado("forum", "Línea de WhatsApp", "Cada línea tiene su propia bolsa de créditos")
-        vista_linea = st.radio("Línea de WhatsApp", VISTAS_LINEA, key="linea", label_visibility="collapsed",
-                               captions=[SUBTITULO_LINEA[v] for v in VISTAS_LINEA])
-    versus = vista_linea == "UCP vs Outbound"
-    linea = "Ambas líneas" if versus else vista_linea   # línea de los datos (el comparativo usa las dos)
 
     fecha_min = envios["fecha"].min().date()
     fecha_max = envios["fecha"].max().date()
@@ -800,11 +897,53 @@ with st.sidebar:
             "- **Créditos adquiridos:** los comprados para cada línea. UCP y Outbound son bolsas separadas.\n"
             "- **Créditos asignados:** la parte de los créditos de una línea que corresponde a una unidad.\n"
             "- **Vista:** Equipo CRM ve todo; cada unidad puede ver solo lo suyo.\n"
+            "- **Canales:** WhatsApp, Correo y SMS tienen cada uno su bolsa de créditos y sus tarifas. "
+            "«Todos los canales» los compara en dólares (con el precio por 1.000 créditos de Configuración) "
+            "y en entregas.\n"
             "- **Estado:** todo lo consumido frente a los créditos adquiridos o asignados. Normal, Atención "
             "o Crítico según el porcentaje usado.\n"
             "- **Periodo a consultar:** filtra lo usado en esas fechas; no cambia los disponibles ni el estado.\n"
             "- **Agotamiento estimado:** fecha en que se acabarían los créditos si se sigue al ritmo de los "
             "últimos 28 días, con las tarifas que rijan cada día.")
+
+
+# ---------------------------------------------------------------------------
+# Canal (arriba) y línea de WhatsApp
+# ---------------------------------------------------------------------------
+
+CANALES = list(L.CANALES)                      # whatsapp, correo, sms
+OPCIONES_CANAL = ["todos"] + CANALES
+NOMBRE_CANAL = {"todos": "Todos los canales", **L.CANALES}
+COLOR_CANAL = {"whatsapp": "#128C7E", "correo": "#7B4FBF", "sms": "#5B6B7F"}
+CANALES_CONECTADOS = {"whatsapp"}              # correo y SMS: falta su reporte y sus tarifas
+
+if st.session_state.get("canal") not in OPCIONES_CANAL:
+    pedido = str(st.query_params.get("canal", "")).lower().strip()
+    st.session_state["canal"] = pedido if pedido in OPCIONES_CANAL else "whatsapp"
+if st.session_state.get("linea_guardada") not in VISTAS_LINEA:
+    st.session_state["linea_guardada"] = "Ambas líneas"
+
+zona_titulo = st.container()
+zona_canal = st.container(key="zona-canal")
+with zona_canal:
+    canal = st.segmented_control("Canal", OPCIONES_CANAL, key="canal", format_func=lambda c: NOMBRE_CANAL[c],
+                                 label_visibility="collapsed") or "whatsapp"
+    st.query_params["canal"] = canal
+    if canal == "whatsapp":
+        if st.session_state.get("linea") not in VISTAS_LINEA:
+            st.session_state["linea"] = st.session_state["linea_guardada"]
+        vista_linea = st.segmented_control(
+            "Línea de WhatsApp", VISTAS_LINEA, key="linea", label_visibility="collapsed",
+            format_func=lambda v: {"Ambas líneas": "Ambas líneas", "UCP vs Outbound": "UCP vs Outbound",
+                                   "UCP": f"UCP · {L.LINEAS['UCP']}",
+                                   "Outbound": f"Outbound · {L.LINEAS['Outbound']}"}[v],
+            help="UCP y Outbound son los dos números de WhatsApp, cada uno con su propia bolsa de créditos.") \
+            or "Ambas líneas"
+        st.session_state["linea_guardada"] = vista_linea
+    else:
+        vista_linea = "Ambas líneas"
+versus = vista_linea == "UCP vs Outbound"
+linea = "Ambas líneas" if versus else vista_linea   # línea de los datos (el comparativo usa las dos)
 
 
 def filtrar(datos: pd.DataFrame, nombre_linea: str = "Ambas líneas", unidad: str | None = None) -> pd.DataFrame:
@@ -836,26 +975,34 @@ icono_html = imagen_html(RUTA_ICONO, "WhatsApp") if RUTA_ICONO else ICONO_CHAT
 dias_desde = (date.today() - fecha_max).days
 frescura = ("hoy" if dias_desde <= 0 else "hace 1 día" if dias_desde == 1 else f"hace {dias_desde} días")
 clase_frescura = "frescura-alerta" if dias_desde > 7 else "frescura"
-st.markdown(
-    f'<div class="titulo"><div class="titulo-icono">{icono_html}</div>'
-    f'<div><div class="titulo-texto">Créditos de WhatsApp'
-    f'{" · " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else ""}</div>'
-    f'<div class="subtitulo">'
-    f'<span class="{clase_frescura}">Datos al {fecha_max:%d/%m/%Y} · {frescura}</span>'
-    f'<span class="pastilla">{"Unidad " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else "Equipo CRM"}</span>'
-    f'<span class="pastilla">{ETIQUETA_LINEA[vista_linea]}</span>'
-    f'<span class="pastilla">Periodo: {inicio:%d/%m/%Y} – {fin:%d/%m/%Y}</span>'
-    f'</div></div></div>', unsafe_allow_html=True)
-if dias_desde > 7:
-    st.warning(f"El reporte llega hasta el {fecha_max:%d/%m/%Y} ({frescura}). El consumo real puede ser mayor: "
-               "exporta un reporte nuevo de Marketing Cloud y reemplaza data.xlsx.", icon=":material/schedule:")
-if hay_cambios:
-    st.info("Estás viendo compras o asignaciones de créditos editadas que aún no se han guardado. "
-            "Guárdalas o descártalas en la pestaña Configuración.", icon=":material/edit:")
+with zona_titulo:
+    st.markdown(
+        f'<div class="titulo"><div class="titulo-icono">{icono_html}</div>'
+        f'<div><div class="titulo-texto">Créditos de mensajería'
+        f'{" · " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else ""}</div>'
+        f'<div class="subtitulo">'
+        f'<span class="{clase_frescura}">Datos de WhatsApp al {fecha_max:%d/%m/%Y} · {frescura}</span>'
+        f'<span class="pastilla">{"Unidad " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else "Equipo CRM"}</span>'
+        f'<span class="pastilla">Periodo: {inicio:%d/%m/%Y} – {fin:%d/%m/%Y}</span>'
+        f'</div></div></div>', unsafe_allow_html=True)
+    if dias_desde > 7:
+        st.warning(f"El reporte llega hasta el {fecha_max:%d/%m/%Y} ({frescura}). El consumo real puede ser mayor: "
+                   "exporta un reporte nuevo de Marketing Cloud y reemplaza data.xlsx.", icon=":material/schedule:")
+    if hay_cambios:
+        st.info("Estás viendo compras o asignaciones de créditos editadas que aún no se han guardado. "
+                "Guárdalas o descártalas en WhatsApp → Créditos.", icon=":material/edit:")
 
-nombres_tabs = (["Resumen", "Proyección", "Journeys", "Detalle"] if unidad_sel else
-                ["Resumen", "Proyección", "Unidades", "Journeys", "Detalle", "Configuración"])
-tabs = dict(zip(nombres_tabs, st.tabs(nombres_tabs)))
+if canal == "whatsapp":
+    nombres_tabs = (["Resumen", "Proyección", "Journeys", "Detalle"] if unidad_sel else
+                    ["Resumen", "Proyección", "Unidades", "Journeys", "Detalle", "Créditos"])
+elif canal == "todos":
+    nombres_tabs = ["Resumen"] if unidad_sel else ["Resumen", "Configuración"]
+else:
+    nombres_tabs = []
+tabs = dict(zip(nombres_tabs, st.tabs(nombres_tabs))) if nombres_tabs else {}
+tabs_todos = tabs if canal == "todos" else {}
+if canal != "whatsapp":
+    tabs = {}   # las secciones de WhatsApp no se dibujan
 
 
 # ---------------------------------------------------------------------------
@@ -936,10 +1083,17 @@ def estado_de(nombre_linea: str, unidad: str | None = None) -> dict:
             info["agot_ts"] = proy_l["agotamiento"]
             info["agotamiento"] = texto_agotamiento(info["agot_ts"])
     info["usado_periodo"] = float(periodo_e["creditos"].sum()) + est_periodo["creditos"]
+    info["usd"] = usd_creditos(consumido, nombre_linea)            # gasto en USD hasta el corte
+    info["usd_disponible"] = usd_creditos(disponible, nombre_linea)  # valor de lo adquirido / asignado
     if L.LINEAS[nombre_linea] is None:
         # UCP y Outbound son bolsas separadas: lo que sobra en una no cubre a la otra. El total se agota
         # cuando se agota la primera línea, no cuando se acaba la suma de las dos.
-        primera = primera_en_agotarse({l: estado_de(l, unidad) for l in LINEAS_COMPRA})
+        por_linea_e = {l: estado_de(l, unidad) for l in LINEAS_COMPRA}
+        valores = [por_linea_e[l]["usd"] for l in LINEAS_COMPRA if por_linea_e[l]["usd"] is not None]
+        info["usd"] = sum(valores) if valores else None
+        valores = [por_linea_e[l]["usd_disponible"] for l in LINEAS_COMPRA if por_linea_e[l]["usd_disponible"] is not None]
+        info["usd_disponible"] = sum(valores) if valores else None
+        primera = primera_en_agotarse(por_linea_e)
         if primera:
             info["agot_ts"], info["agot_linea"], info["ritmo"] = primera
             info["agotamiento"] = texto_agotamiento(info["agot_ts"])
@@ -975,11 +1129,10 @@ def etiqueta_corte() -> str:
 
 
 def detalle_agotamiento(e: dict) -> str:
-    """Debajo de la fecha: con qué ritmo se calculó y, en el total, qué línea se agota primero."""
-    if not isinstance(e["agot_ts"], pd.Timestamp):
+    """En el total de ambas líneas: qué línea se agota primero (son bolsas separadas)."""
+    if not isinstance(e["agot_ts"], pd.Timestamp) or not e["agot_linea"]:
         return ""
-    linea_txt = f"primero {e['agot_linea']} · " if e["agot_linea"] else ""
-    return f'<div class="cifra-sub">{linea_txt}a {num(e["ritmo"])} créditos/día (últimos {REF_DIAS} días)</div>'
+    return f'<div class="cifra-sub">Primero se agota {e["agot_linea"]}</div>'
 
 
 def cifras_basicas(e: dict) -> list[tuple]:
@@ -989,7 +1142,8 @@ def cifras_basicas(e: dict) -> list[tuple]:
     if inicio > minimo_datos:   # si el periodo empieza en el primer dato, sería la misma cifra que "Usados al ..."
         cifras.append(("Usados en el periodo", num(e["usado_periodo"])))
     cifras += [
-        (f"Usados {al}" + (" (estimado)" if futuro else ""), num(e["consumido"])),
+        (f"Usados {al}" + (" (estimado)" if futuro else ""), num(e["consumido"])
+         + (f'<div class="cifra-sub">≈ {txt_usd(e["usd"])}{ESTIMADO_USD}</div>' if e.get("usd") is not None else "")),
         (e["etiqueta_disponible"] + ("" if al == "a la fecha" else f" {al}"), num(e["disponible"]) if hay else "Sin definir"),
         (("Excedido" if e["restan_corte"] < 0 else "Disponibles") + (" hoy" if al == "a la fecha" else f" {al}"),
          num(abs(e["restan_corte"])) if hay else "-"),
@@ -1123,18 +1277,56 @@ def sin_datos_periodo() -> None:
             "Elige otro periodo en la barra lateral.", icon=":material/event_busy:")
 
 
+def bloque_efecto_tarifa(datos: pd.DataFrame) -> None:
+    """Separa, para cada cambio de tarifa del periodo, cuánto del consumo se debe a la tarifa y no al volumen."""
+    efectos = L.efecto_tarifas(datos, tarifas, inicio, fin_real)
+    if not efectos:
+        return
+    st.markdown("#### Efecto de los cambios de tarifa")
+    nota("Cuando cambia la tarifa, las mismas entregas pueden costar más o menos créditos. Aquí se compara lo "
+         "que se cobró desde cada cambio con lo que habrían costado esas mismas entregas con la tabla anterior. "
+         "En las gráficas de semana y mes, la línea punteada marca el cambio.")
+    for ef in efectos:
+        dif = ef["efecto"]
+        usd = usd_de(datos[(datos["fecha"] >= ef["desde"]) & (datos["fecha"] <= ef["hasta"])])
+        usd_ef = None if usd is None or ef["creditos"] == 0 else usd * dif / ef["creditos"]
+        pct_ef = dif / ef["con_tabla_anterior"] * 100 if ef["con_tabla_anterior"] else 0
+        sentido = "sumó" if dif > 0.5 else ("restó" if dif < -0.5 else "no cambió")
+        with st.container(border=True):
+            st.markdown(f'<div class="subtitulo-bloque">Tabla del {ef["desde"]:%d/%m/%Y}</div>', unsafe_allow_html=True)
+            k1, k2, k3 = st.columns(3)
+            k1.metric(f"Cobrado del {ef['desde']:%d/%m} al {ef['hasta']:%d/%m}", num(ef["creditos"]),
+                      help=f"{num(ef['entregas'])} entregas en ese tramo.")
+            k2.metric(f"Con la tabla anterior ({ef['tabla_anterior']:%d/%m/%Y})", num(ef["con_tabla_anterior"]))
+            k3.metric("Efecto de la tarifa", ("+" if dif > 0 else "") + num(dif) if abs(dif) >= 0.5 else "0",
+                      delta=(f"{pct_ef:+.1f} %".replace(".", ",") if abs(dif) >= 0.5 else None), delta_color="inverse",
+                      help="Créditos de más (o de menos) solo por el cambio de tarifa, con las mismas entregas.")
+            if abs(dif) >= 0.5:
+                texto_ef = f"El cambio de tarifa {sentido} {num(abs(dif))} créditos"
+                if usd_ef is not None:
+                    texto_ef += f" (≈ {txt_usd(abs(usd_ef))}{ESTIMADO_USD})"
+            else:
+                texto_ef = "El cambio de tarifa no cambió lo cobrado por estas entregas"
+            st.caption(texto_ef + ". El resto de la variación del consumo se debe a cuántas entregas hubo, "
+                       "no a la tarifa.")
+
+
 def cifras_periodo(datos: pd.DataFrame, clave: str, *, apilado: bool = False) -> None:
     t = L.totales(datos)
     if apilado:
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         c1.metric("Créditos usados", num(t["creditos"]))
-        c2.metric("Entregas", num(t["deliveries"]), help="Mensajes que les llegaron a las personas.")
+        c2.metric("Gasto" + ESTIMADO_USD, txt_usd(usd_de(datos)))
+        c3.metric("Entregas", num(t["deliveries"]), help="Mensajes que les llegaron a las personas.")
     else:
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5 = st.columns([1.1, 1.1, 1, 1, 1])
         c1.metric("Créditos usados", num(t["creditos"]))
-        c2.metric("Entregas", num(t["deliveries"]), help="Mensajes que les llegaron a las personas (deliveries).")
-        c3.metric("Créditos por día", num(t["creditos"] / dias_periodo), help="Promedio diario del periodo.")
-        c4.metric("Entregas por día", num(t["deliveries"] / dias_periodo), help="Promedio diario del periodo.")
+        c2.metric("Gasto" + ESTIMADO_USD, txt_usd(usd_de(datos)),
+                  help="Créditos usados por el precio por 1.000 créditos de cada línea (Todos los canales → "
+                       "Configuración y WhatsApp → Créditos).")
+        c3.metric("Entregas", num(t["deliveries"]), help="Mensajes que les llegaron a las personas (deliveries).")
+        c4.metric("Créditos por día", num(t["creditos"] / dias_periodo), help="Promedio diario del periodo.")
+        c5.metric("Entregas por día", num(t["deliveries"] / dias_periodo), help="Promedio diario del periodo.")
     cajas_por_tipo(t, clave, apilado=apilado)
 
 
@@ -1142,48 +1334,50 @@ def cifras_periodo(datos: pd.DataFrame, clave: str, *, apilado: bool = False) ->
 # Resumen
 # ---------------------------------------------------------------------------
 
-with tabs["Resumen"]:
-    bloque_estado()
+if "Resumen" in tabs:
+    with tabs["Resumen"]:
+        bloque_estado()
 
-    st.markdown(f"### Consumo del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}")
-    nota(f"Lo que usó {texto_ambito} en el periodo consultado ({dias_periodo} "
-         f"{'día' if dias_periodo == 1 else 'días'} con datos). Para cambiarlo, usa «Periodo a consultar» en la barra lateral.")
-    if futuro:
-        st.info(f"El periodo llega hasta el {fin:%d/%m/%Y}, pero los datos reales van hasta el {fin_datos:%d/%m/%Y}. "
-                "Las cifras y gráficas de esta sección muestran solo lo real; lo estimado para después de esa "
-                "fecha está en las tarjetas de estado y en la pestaña Proyección.", icon=":material/update:")
-    if periodo.empty:
-        sin_datos_periodo()
-    else:
-        por_linea = {n: filtrar(periodo, n) for n in LINEAS_COMPRA}
-        if versus:
-            cols = st.columns(2)
-            for col, nombre_l in zip(cols, LINEAS_COMPRA):
-                with col:
-                    st.markdown(f'<div class="subtitulo-bloque">Línea {nombre_l}</div>', unsafe_allow_html=True)
-                    cifras_periodo(por_linea[nombre_l], f"res-{nombre_l}", apilado=True)
+        st.markdown(f"### Consumo del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}")
+        nota(f"Lo que usó {texto_ambito} en el periodo consultado ({dias_periodo} "
+             f"{'día' if dias_periodo == 1 else 'días'} con datos). Para cambiarlo, usa «Periodo a consultar» en la barra lateral.")
+        if futuro:
+            st.info(f"El periodo llega hasta el {fin:%d/%m/%Y}, pero los datos reales van hasta el {fin_datos:%d/%m/%Y}. "
+                    "Las cifras y gráficas de esta sección muestran solo lo real; lo estimado para después de esa "
+                    "fecha está en las tarjetas de estado y en la pestaña Proyección.", icon=":material/update:")
+        if periodo.empty:
+            sin_datos_periodo()
         else:
-            cifras_periodo(periodo, "resumen")
-        nota("Utility tiene tarifas mucho más bajas que Marketing (en Colombia, 0,99 frente a 15,44 créditos por "
-             "mensaje): pesa poco en créditos aunque tenga entregas. Por eso cada tipo tiene su propia gráfica.")
-
-        st.markdown("### Consumo en el tiempo")
-        medida = selector_medida("medida_resumen")
-        secciones = [("Por semana", "semana", False, None), ("Por mes", "mes", False, None),
-                     ("Países con mayor consumo", "nombre_pais", True, 10)]
-        if not unidad_sel:
-            secciones.append(("Consumo por unidad", "unidad", True, None))
-        for titulo_s, por, horizontal, top in secciones:
-            if titulo_s.startswith("Países"):
-                st.markdown(f"### {titulo_s}")
-            elif titulo_s.startswith("Consumo por unidad"):
-                st.markdown(f"### {titulo_s}")
-            else:
-                st.markdown(f"#### {titulo_s}")
+            por_linea = {n: filtrar(periodo, n) for n in LINEAS_COMPRA}
             if versus:
-                graficas_versus(por_linea, por, medida, horizontal=horizontal, top=top)
+                cols = st.columns(2)
+                for col, nombre_l in zip(cols, LINEAS_COMPRA):
+                    with col:
+                        st.markdown(f'<div class="subtitulo-bloque">Línea {nombre_l}</div>', unsafe_allow_html=True)
+                        cifras_periodo(por_linea[nombre_l], f"res-{nombre_l}", apilado=True)
             else:
-                graficas_por_tipo(periodo, por, medida, horizontal=horizontal, top=top)
+                cifras_periodo(periodo, "resumen")
+            nota("Utility tiene tarifas mucho más bajas que Marketing (en Colombia, 0,99 frente a 15,44 créditos por "
+                 "mensaje): pesa poco en créditos aunque tenga entregas. Por eso cada tipo tiene su propia gráfica.")
+            bloque_efecto_tarifa(periodo)
+
+            st.markdown("### Consumo en el tiempo")
+            medida = selector_medida("medida_resumen")
+            secciones = [("Por semana", "semana", False, None), ("Por mes", "mes", False, None),
+                         ("Países con mayor consumo", "nombre_pais", True, 10)]
+            if not unidad_sel:
+                secciones.append(("Consumo por unidad", "unidad", True, None))
+            for titulo_s, por, horizontal, top in secciones:
+                if titulo_s.startswith("Países"):
+                    st.markdown(f"### {titulo_s}")
+                elif titulo_s.startswith("Consumo por unidad"):
+                    st.markdown(f"### {titulo_s}")
+                else:
+                    st.markdown(f"#### {titulo_s}")
+                if versus:
+                    graficas_versus(por_linea, por, medida, horizontal=horizontal, top=top)
+                else:
+                    graficas_por_tipo(periodo, por, medida, horizontal=horizontal, top=top)
 
 
 # ---------------------------------------------------------------------------
@@ -1231,66 +1425,67 @@ if "Unidades" in tabs:
 # Journeys
 # ---------------------------------------------------------------------------
 
-with tabs["Journeys"]:
-    st.markdown("### Journeys")
-    nota(f"Consumo de los journeys de {texto_ambito} del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y} "
-         "(periodo de la barra lateral). Elige uno o varios para ver su detalle y proyección.")
-    if periodo.empty:
-        sin_datos_periodo()
-    else:
-        ranking = periodo.groupby("journey")["creditos"].sum().sort_values(ascending=False)
-        clave_j = f"{unidad_sel or 'crm'}_{vista_linea}"
-        seleccion = st.multiselect("Journeys", list(ranking.index), key=f"sel_journeys_{clave_j}",
-                                   placeholder="Escribe parte del nombre para buscar",
-                                   format_func=lambda j: j.strip(),
-                                   help="Ordenados de mayor a menor consumo en el periodo consultado.")
-        medida_j = selector_medida(f"medida_journeys_{clave_j}")
-        if not seleccion:
-            st.markdown("#### Clasificación de journeys")
-            nota("Automático - Acceso, Financiación y Visitas son journeys que corren solos; Pruebas son los que tienen "
-                 "«prueba» en el nombre; Entregas a solicitud es lo que piden las unidades.")
-            if versus:
-                graficas_versus({n: filtrar(periodo, n) for n in LINEAS_COMPRA}, "tipo_journey", medida_j,
-                                horizontal=True)
-            else:
-                graficas_por_tipo(periodo, "tipo_journey", medida_j, horizontal=True)
-            st.markdown("#### Los 15 journeys con mayor consumo")
-            top = periodo.assign(journey=periodo["journey"].str.strip())
-            if versus:
-                graficas_versus({n: filtrar(top, n) for n in LINEAS_COMPRA}, "journey", medida_j, horizontal=True,
-                                top=15)
-            else:
-                graficas_por_tipo(top, "journey", medida_j, horizontal=True, top=15)
+if "Journeys" in tabs:
+    with tabs["Journeys"]:
+        st.markdown("### Journeys")
+        nota(f"Consumo de los journeys de {texto_ambito} del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y} "
+             "(periodo de la barra lateral). Elige uno o varios para ver su detalle y proyección.")
+        if periodo.empty:
+            sin_datos_periodo()
         else:
-            datos_j = periodo[periodo["journey"].isin(seleccion)]
-            cifras_periodo(datos_j, "journeys")
-            st.markdown("#### Consumo semanal")
-            graficas_por_tipo(datos_j, "semana", medida_j)
-            st.markdown("#### Países con mayor consumo")
-            graficas_por_tipo(datos_j, "nombre_pais", medida_j, horizontal=True, top=10)
+            ranking = periodo.groupby("journey")["creditos"].sum().sort_values(ascending=False)
+            clave_j = f"{unidad_sel or 'crm'}_{vista_linea}"
+            seleccion = st.multiselect("Journeys", list(ranking.index), key=f"sel_journeys_{clave_j}",
+                                       placeholder="Escribe parte del nombre para buscar",
+                                       format_func=lambda j: j.strip(),
+                                       help="Ordenados de mayor a menor consumo en el periodo consultado.")
+            medida_j = selector_medida(f"medida_journeys_{clave_j}")
+            if not seleccion:
+                st.markdown("#### Clasificación de journeys")
+                nota("Automático - Acceso, Financiación y Visitas son journeys que corren solos; Pruebas son los que tienen "
+                     "«prueba» en el nombre; Entregas a solicitud es lo que piden las unidades.")
+                if versus:
+                    graficas_versus({n: filtrar(periodo, n) for n in LINEAS_COMPRA}, "tipo_journey", medida_j,
+                                    horizontal=True)
+                else:
+                    graficas_por_tipo(periodo, "tipo_journey", medida_j, horizontal=True)
+                st.markdown("#### Los 15 journeys con mayor consumo")
+                top = periodo.assign(journey=periodo["journey"].str.strip())
+                if versus:
+                    graficas_versus({n: filtrar(top, n) for n in LINEAS_COMPRA}, "journey", medida_j, horizontal=True,
+                                    top=15)
+                else:
+                    graficas_por_tipo(top, "journey", medida_j, horizontal=True, top=15)
+            else:
+                datos_j = periodo[periodo["journey"].isin(seleccion)]
+                cifras_periodo(datos_j, "journeys")
+                st.markdown("#### Consumo semanal")
+                graficas_por_tipo(datos_j, "semana", medida_j)
+                st.markdown("#### Países con mayor consumo")
+                graficas_por_tipo(datos_j, "nombre_pais", medida_j, horizontal=True, top=10)
 
-            st.markdown("### Proyección de los journeys seleccionados")
-            todos_j = envios_ambito[envios_ambito["journey"].isin(seleccion)]
-            col_cfg, col_res = st.columns([1, 2.4])
-            ini_rj, fin_rj = selector_referencia(col_cfg, f"ref_journeys_{clave_j}", fin_datos, inicio, fin, minimo_datos)
-            disponibles_j = col_cfg.number_input(
-                "Créditos reservados para estos journeys", min_value=0.0, value=0.0, step=10000.0, format="%.0f",
-                key=f"disp_j_{clave_j}_{'|'.join(seleccion)}",
-                help="Opcional. Si estos journeys tienen una bolsa de créditos propia, escríbela para estimar "
-                     "cuándo se agotaría.")
-            proy_j = L.proyeccion(todos_j, ini_rj, fin_rj, disponibles_j, desde=fin_datos, tarifas=tarifas)
-            with col_res:
-                p1, p2, p3 = st.columns(3)
-                p1.metric("Créditos próxima semana", num(proy_j["semana"]["creditos"]))
-                p2.metric("Entregas próxima semana", num(proy_j["semana"]["deliveries"]))
-                agot = proy_j["agotamiento"]
-                p3.metric("Agotamiento estimado",
-                          "Escribe los créditos" if disponibles_j == 0 else
-                          (f"{agot:%d/%m/%Y}" if isinstance(agot, pd.Timestamp) else
-                           ("Ya agotados" if agot == "agotado" else "Sin consumo reciente")))
-                st.markdown(desglose(proy_j["semana"]["creditos_marketing"], proy_j["semana"]["creditos_utility"]),
-                            unsafe_allow_html=True)
-            nota(f"Con el ritmo de entregas del {ini_rj:%d/%m/%Y} al {fin_rj:%d/%m/%Y}.")
+                st.markdown("### Proyección de los journeys seleccionados")
+                todos_j = envios_ambito[envios_ambito["journey"].isin(seleccion)]
+                col_cfg, col_res = st.columns([1, 2.4])
+                ini_rj, fin_rj = selector_referencia(col_cfg, f"ref_journeys_{clave_j}", fin_datos, inicio, fin, minimo_datos)
+                disponibles_j = col_cfg.number_input(
+                    "Créditos reservados para estos journeys", min_value=0.0, value=0.0, step=10000.0, format="%.0f",
+                    key=f"disp_j_{clave_j}_{'|'.join(seleccion)}",
+                    help="Opcional. Si estos journeys tienen una bolsa de créditos propia, escríbela para estimar "
+                         "cuándo se agotaría.")
+                proy_j = L.proyeccion(todos_j, ini_rj, fin_rj, disponibles_j, desde=fin_datos, tarifas=tarifas)
+                with col_res:
+                    p1, p2, p3 = st.columns(3)
+                    p1.metric("Créditos próxima semana", num(proy_j["semana"]["creditos"]))
+                    p2.metric("Entregas próxima semana", num(proy_j["semana"]["deliveries"]))
+                    agot = proy_j["agotamiento"]
+                    p3.metric("Agotamiento estimado",
+                              "Escribe los créditos" if disponibles_j == 0 else
+                              (f"{agot:%d/%m/%Y}" if isinstance(agot, pd.Timestamp) else
+                               ("Ya agotados" if agot == "agotado" else "Sin consumo reciente")))
+                    st.markdown(desglose(proy_j["semana"]["creditos_marketing"], proy_j["semana"]["creditos_utility"]),
+                                unsafe_allow_html=True)
+                nota(f"Con el ritmo de entregas del {ini_rj:%d/%m/%Y} al {fin_rj:%d/%m/%Y}.")
 
 
 # ---------------------------------------------------------------------------
@@ -1364,53 +1559,198 @@ def bloque_proyeccion(nombre_l: str, contenedor, clave: str) -> None:
 
 
 
-with tabs["Proyección"]:
-    st.markdown(f"### Proyección de {nombre_ambito}")
-    nota(f"Qué pasaría con los créditos de {texto_ambito} si se sigue al mismo ritmo, desde el último día con "
-         f"datos ({fin_datos:%d/%m/%Y}).")
-    clave_p = f"{unidad_sel or 'crm'}"
-    if versus:
-        cols = st.columns(2)
-        for col, nombre_l in zip(cols, LINEAS_COMPRA):
-            bloque_proyeccion(nombre_l, col, f"{clave_p}_{nombre_l}_vs")
-    else:
-        bloque_proyeccion(linea, st.container(), f"{clave_p}_{linea}")
+DIAS_EN_USO = 14   # un journey "está en uso" si tuvo entregas en los últimos 14 días (y en más de un día)
 
-    ultima_tabla = L.vigencias(tarifas)[-1]
-    if ultima_tabla != pd.Timestamp.min:
-        vigente_hoy = L.tarifa_vigente(tarifas, max(fin_datos, pd.Timestamp(date.today())))
-        nota(f"Tarifas: cada día proyectado se cobra con la tabla oficial de Salesforce vigente ese día. Hoy rige "
-             f"la del {vigente_hoy:%d/%m/%Y}; la más reciente publicada es la del {ultima_tabla:%d/%m/%Y} y se "
-             "aplica desde esa fecha. Cuando se publique una tabla nueva, basta con agregarla a la carpeta tarifas/.")
+
+def bloque_proyeccion_journeys(clave: str) -> None:
+    """Proyección con los journeys que de verdad siguen en uso: se pueden quitar journeys y agregar nuevos."""
+    lineas_p = LINEAS_COMPRA if (versus or linea == "Ambas líneas") else [linea]
+    datos_s = filtrar(envios, "Ambas líneas" if len(lineas_p) > 1 else lineas_p[0], unidad_sel)
+    if datos_s.empty:
+        st.info("No hay entregas para proyectar en lo que se está viendo.")
+        return
+    col_cfg, col_res = st.columns([1, 2.4])
+    ini_r, fin_r = selector_referencia(col_cfg, f"refj_{clave}", fin_datos, inicio, fin, minimo_datos)
+    hasta = pd.Timestamp(col_cfg.date_input(
+        "Proyectar hasta", value=(fin_datos + pd.Timedelta(days=30)).date(),
+        min_value=(fin_datos + pd.Timedelta(days=1)).date(), max_value=(fin_datos + pd.Timedelta(days=730)).date(),
+        format="DD/MM/YYYY", key=f"hastaj_{clave}"))
+    dias_ref = max((fin_r - ini_r).days + 1, 1)
+    ventana = datos_s[(datos_s["fecha"] >= ini_r) & (datos_s["fecha"] <= fin_r)]
+    if ventana.empty:
+        col_res.info("No hubo entregas en el periodo de referencia. Elige otro ritmo.")
+        return
+
+    # Journeys del periodo de referencia, con su ritmo y si siguen en uso
+    res = (ventana.groupby(["journey", "linea"])
+           .agg(entregas=("deliveries", "sum"), creditos=("creditos", "sum"), dias=("fecha", "nunique"))
+           .reset_index())
+    ultimos = datos_s.groupby(["journey", "linea"])["fecha"].max().rename("ultimo").reset_index()
+    res = res.merge(ultimos, on=["journey", "linea"], how="left")
+    res["entregas_sem"] = (res["entregas"] / dias_ref * 7).round(0)
+    res["creditos_sem"] = (res["creditos"] / dias_ref * 7).round(0)
+    res["Incluir"] = (res["ultimo"] >= fin_datos - pd.Timedelta(days=DIAS_EN_USO - 1)) & (res["dias"] >= 2)
+    res["Journey"] = res["journey"].str.strip()
+    res = res.sort_values("creditos_sem", ascending=False).reset_index(drop=True)
+
+    st.markdown("#### Journeys a incluir")
+    nota(f"Vienen marcados los journeys que siguen en uso: con entregas en los últimos {DIAS_EN_USO} días y en más "
+         "de un día (los de un solo uso quedan por fuera). Marca o desmarca los que quieras; el ritmo de cada uno "
+         f"es su promedio semanal del {ini_r:%d/%m/%Y} al {fin_r:%d/%m/%Y}.")
+    columnas = ["Incluir", "Journey"] + (["linea"] if len(lineas_p) > 1 else []) + \
+               ["entregas_sem", "creditos_sem", "ultimo", "dias"]
+    editado = st.data_editor(
+        res[columnas], key=f"ed_journeys_{clave}_{ini_r:%Y%m%d}_{fin_r:%Y%m%d}", hide_index=True, width="stretch",
+        height=min(420, 38 + 35 * len(res)), disabled=[c for c in columnas if c != "Incluir"],
+        column_config={
+            "Incluir": st.column_config.CheckboxColumn("Incluir", width="small"),
+            "Journey": st.column_config.TextColumn("Journey", width="large"),
+            "linea": st.column_config.TextColumn("Línea"),
+            "entregas_sem": st.column_config.NumberColumn("Entregas / semana", format="localized"),
+            "creditos_sem": st.column_config.NumberColumn("Créditos / semana", format="localized"),
+            "ultimo": st.column_config.DateColumn("Último uso", format="DD/MM/YYYY"),
+            "dias": st.column_config.NumberColumn("Días con entregas"),
+        })
+    incluidos = set(zip(res.loc[editado["Incluir"].astype(bool).values, "journey"],
+                        res.loc[editado["Incluir"].astype(bool).values, "linea"]))
+
+    st.markdown("#### Journeys nuevos o de reemplazo")
+    nota("Agrega una fila por cada journey que se va a empezar a usar, con cuántas entregas por semana esperas. "
+         "Los créditos se calculan con la tarifa vigente del país y del tipo de mensaje.")
+    paises = list(ventana.groupby("pais")["deliveries"].sum().sort_values(ascending=False).index)
+    paises = paises + [p for p in ("CO", "US", "MX", "OTHER") if p not in paises]
+    base_n = pd.DataFrame({"Nombre": pd.Series(dtype=str), "Línea": pd.Series(dtype=str),
+                           "Tipo": pd.Series(dtype=str), "País": pd.Series(dtype=str),
+                           "Entregas por semana": pd.Series(dtype=float)})
+    if len(lineas_p) == 1:
+        base_n = base_n.drop(columns="Línea")
+    nuevos = st.data_editor(
+        base_n, key=f"nuevos_{clave}", num_rows="dynamic", hide_index=True, width="stretch",
+        column_config={
+            "Nombre": st.column_config.TextColumn("Nombre", width="large"),
+            "Línea": st.column_config.SelectboxColumn("Línea", options=LINEAS_COMPRA, required=True),
+            "Tipo": st.column_config.SelectboxColumn("Tipo", options=list(TIPOS), default="Marketing", required=True),
+            "País": st.column_config.SelectboxColumn("País", options=paises, default="CO", required=True),
+            "Entregas por semana": st.column_config.NumberColumn("Entregas por semana", min_value=0, step=100,
+                                                                 format="localized"),
+        })
+    filas_nuevas = []
+    for _, n in nuevos.iterrows():
+        if pd.notna(n.get("Entregas por semana")) and float(n.get("Entregas por semana") or 0) > 0:
+            filas_nuevas.append({"nombre": n.get("Nombre") or "Journey nuevo", "entregas_semana": n["Entregas por semana"],
+                                 "pais": n.get("País") or "CO", "tipo": n.get("Tipo") or "Marketing",
+                                 "linea": n.get("Línea") if len(lineas_p) > 1 else lineas_p[0], "unidad": unidad_sel})
+    sinteticos = L.journeys_sinteticos(filas_nuevas, ini_r, fin_r)
+
+    # Proyección por línea (bolsas separadas), con todos los journeys y con el escenario
+    total = {"g_sem": 0.0, "e_sem": 0.0, "g_hasta": 0.0, "e_hasta": 0.0, "e_ent": 0.0, "e_usd": 0.0, "g_usd": 0.0}
+    agot_g, agot_e = {}, {}
+    for l in lineas_p:
+        e_l = estados[l]
+        base_l = ventana[ventana["linea"] == l]
+        mascara = pd.Series([k in incluidos for k in zip(base_l["journey"], base_l["linea"])],
+                            index=base_l.index, dtype=bool)
+        escenario_l = base_l.loc[mascara]
+        if not sinteticos.empty:
+            escenario_l = pd.concat([escenario_l, sinteticos[sinteticos["linea"] == l]], ignore_index=True)
+        pg = L.proyeccion(base_l, ini_r, fin_r, e_l["restan"], desde=fin_datos, tarifas=tarifas)
+        pe = L.proyeccion(escenario_l, ini_r, fin_r, e_l["restan"], desde=fin_datos, tarifas=tarifas)
+        hg = L.consumo_estimado(base_l, ini_r, fin_r, fin_datos, hasta, tarifas)
+        he = L.consumo_estimado(escenario_l, ini_r, fin_r, fin_datos, hasta, tarifas)
+        total["g_sem"] += pg["semana"]["creditos"]; total["e_sem"] += pe["semana"]["creditos"]
+        total["g_hasta"] += hg["creditos"]; total["e_hasta"] += he["creditos"]; total["e_ent"] += he["deliveries"]
+        total["g_usd"] += usd_creditos(hg["creditos"], l) or 0; total["e_usd"] += usd_creditos(he["creditos"], l) or 0
+        if e_l["disponible_hoy"] > 0:
+            agot_g[l] = {"agot_ts": pg["agotamiento"], "ritmo": pg["diario"]["creditos"]}
+            agot_e[l] = {"agot_ts": pe["agotamiento"], "ritmo": pe["diario"]["creditos"]}
+    pg_ag, pe_ag = primera_en_agotarse(agot_g), primera_en_agotarse(agot_e)
+
+    def fecha_txt(p, con_linea: bool = True):
+        if p is None:
+            return "No aplica"
+        return texto_agotamiento(p[0]) + (f" ({p[1]})" if con_linea and len(lineas_p) > 1 else "")
+
+    def delta_txt(a, b):
+        d = a - b
+        return None if abs(d) < 0.5 else ("+" if d > 0 else "-") + num(abs(d)) + " frente a todos"
+
+    with col_res:
+        quitados = len(res) - len(incluidos)
+        st.markdown(f'<div class="subtitulo-bloque">Escenario: {len(incluidos)} de {len(res)} journeys'
+                    f'{f" + {len(filas_nuevas)} nuevo(s)" if filas_nuevas else ""}</div>', unsafe_allow_html=True)
+        q1, q2, q3 = st.columns(3)
+        q1.metric("Créditos próxima semana", num(total["e_sem"]), delta=delta_txt(total["e_sem"], total["g_sem"]),
+                  delta_color="inverse")
+        q2.metric(f"Créditos hasta el {hasta:%d/%m/%Y}", num(total["e_hasta"]),
+                  delta=delta_txt(total["e_hasta"], total["g_hasta"]), delta_color="inverse",
+                  help=f"{num(total['e_ent'])} entregas · ≈ {txt_usd(total['e_usd'])}{ESTIMADO_USD}")
+        q3.metric("Agotamiento estimado", fecha_txt(pe_ag, con_linea=False),
+                  help=(f"Primera línea en agotarse: {pe_ag[1]}. " if pe_ag and len(lineas_p) > 1 else "")
+                       + "Con todos los journeys del periodo de referencia: " + fecha_txt(pg_ag) + ". "
+                       + ("UCP y Outbound son bolsas separadas: es la fecha de la primera en agotarse."
+                          if len(lineas_p) > 1 else ""))
+        st.caption(f"Con todos los journeys: {num(total['g_sem'])} créditos la próxima semana, {num(total['g_hasta'])} "
+                   f"hasta el {hasta:%d/%m/%Y} (≈ {txt_usd(total['g_usd'])}{ESTIMADO_USD}) y agotamiento "
+                   f"{fecha_txt(pg_ag)}. En el escenario quedan por fuera {quitados} journeys"
+                   + (f" y se suman {len(filas_nuevas)} nuevos" if filas_nuevas else "") + ".")
+
+
+if "Proyección" in tabs:
+    with tabs["Proyección"]:
+        st.markdown(f"### Proyección de {nombre_ambito}")
+        nota(f"Qué pasaría con los créditos de {texto_ambito} si se sigue al mismo ritmo, desde el último día con "
+             f"datos ({fin_datos:%d/%m/%Y}).")
+        clave_p = f"{unidad_sel or 'crm'}"
+        modo_proy = st.segmented_control(
+            "Cómo proyectar", ["ritmo", "journeys"], key=f"modo_proy_{clave_p}", default="ritmo",
+            format_func=lambda m: {"ritmo": "Con el ritmo actual", "journeys": "Eligiendo journeys"}[m],
+            help="«Con el ritmo actual» usa todo lo que se envió en el periodo de referencia. «Eligiendo journeys» "
+                 "deja quitar los journeys que ya no se van a usar y agregar journeys nuevos o de reemplazo.") or "ritmo"
+        if modo_proy == "journeys":
+            bloque_proyeccion_journeys(f"{clave_p}_{vista_linea}")
+        elif versus:
+            cols = st.columns(2)
+            for col, nombre_l in zip(cols, LINEAS_COMPRA):
+                bloque_proyeccion(nombre_l, col, f"{clave_p}_{nombre_l}_vs")
+        else:
+            bloque_proyeccion(linea, st.container(), f"{clave_p}_{linea}")
+
+        ultima_tabla = L.vigencias(tarifas)[-1]
+        if ultima_tabla != pd.Timestamp.min:
+            vigente_hoy = L.tarifa_vigente(tarifas, max(fin_datos, pd.Timestamp(date.today())))
+            nota(f"Tarifas: cada día proyectado se cobra con la tabla oficial de Salesforce vigente ese día. Hoy rige "
+                 f"la del {vigente_hoy:%d/%m/%Y}; la más reciente publicada es la del {ultima_tabla:%d/%m/%Y} y se "
+                 "aplica desde esa fecha. Cuando se publique una tabla nueva, basta con agregarla a la carpeta tarifas/.")
 
 
 # ---------------------------------------------------------------------------
 # Detalle
 # ---------------------------------------------------------------------------
 
-with tabs["Detalle"]:
-    st.markdown("### Detalle de entregas")
-    nota(f"Cada fila del reporte de Marketing Cloud de {texto_ambito} en el periodo consultado "
-         f"({inicio:%d/%m/%Y} al {fin:%d/%m/%Y}), con la tarifa y los créditos calculados. Se puede ordenar por "
-         "cualquier columna y descargar.")
-    columnas_detalle = {
-        "fecha": "Fecha", "linea": "Línea", "unidad": "Unidad", "journey": "Journey",
-        "WhatsApp Send Name": "Send Name", "tipo_journey": "Tipo de journey", "pais": "País",
-        "tipo_conversacion": "Tipo", "deliveries": "Entregas", "tarifa": "Tarifa",
-        "tarifa_vigente_desde": "Tarifa vigente desde", "creditos": "Créditos",
-    }
-    columnas_detalle = {k: v for k, v in columnas_detalle.items() if k in periodo.columns}
-    vista_d = periodo.sort_values("fecha", ascending=False)[list(columnas_detalle)].rename(columns=columnas_detalle)
-    vista_d["Unidad"] = vista_d["Unidad"].map(NOMBRE_UNIDAD_APP)
-    st.dataframe(vista_d, hide_index=True, width="stretch", height=560,
-                 column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                                "Tarifa vigente desde": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                                "Entregas": st.column_config.NumberColumn(format="localized"),
-                                "Créditos": st.column_config.NumberColumn(format="localized")})
-    sufijo_archivo = f"_{unidad_sel}" if unidad_sel else ""
-    st.download_button("Descargar detalle (CSV)", vista_d.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"),
-                       file_name=f"Detalle_creditos_WhatsApp{sufijo_archivo}_{date.today():%Y%m%d}.csv",
-                       mime="text/csv", icon=":material/download:")
+if "Detalle" in tabs:
+    with tabs["Detalle"]:
+        st.markdown("### Detalle de entregas")
+        nota(f"Cada fila del reporte de Marketing Cloud de {texto_ambito} en el periodo consultado "
+             f"({inicio:%d/%m/%Y} al {fin:%d/%m/%Y}), con la tarifa y los créditos calculados. Se puede ordenar por "
+             "cualquier columna y descargar.")
+        columnas_detalle = {
+            "fecha": "Fecha", "linea": "Línea", "unidad": "Unidad", "journey": "Journey",
+            "WhatsApp Send Name": "Send Name", "tipo_journey": "Tipo de journey", "pais": "País",
+            "tipo_conversacion": "Tipo", "deliveries": "Entregas", "tarifa": "Tarifa",
+            "tarifa_vigente_desde": "Tarifa vigente desde", "creditos": "Créditos",
+        }
+        columnas_detalle = {k: v for k, v in columnas_detalle.items() if k in periodo.columns}
+        vista_d = periodo.sort_values("fecha", ascending=False)[list(columnas_detalle)].rename(columns=columnas_detalle)
+        vista_d["Unidad"] = vista_d["Unidad"].map(NOMBRE_UNIDAD_APP)
+        st.dataframe(vista_d, hide_index=True, width="stretch", height=560,
+                     column_config={"Fecha": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                                    "Tarifa vigente desde": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                                    "Entregas": st.column_config.NumberColumn(format="localized"),
+                                    "Créditos": st.column_config.NumberColumn(format="localized")})
+        sufijo_archivo = f"_{unidad_sel}" if unidad_sel else ""
+        st.download_button("Descargar detalle (CSV)", vista_d.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig"),
+                           file_name=f"Detalle_creditos_WhatsApp{sufijo_archivo}_{date.today():%Y%m%d}.csv",
+                           mime="text/csv", icon=":material/download:")
 
 
 # ---------------------------------------------------------------------------
@@ -1554,8 +1894,8 @@ def seccion_unidades_y_journeys() -> None:
                "asignados se eliminan y sus journeys pasan a la unidad por defecto (o a otra por su prefijo).")
 
 
-if "Configuración" in tabs:
-    with tabs["Configuración"]:
+if "Créditos" in tabs:
+    with tabs["Créditos"]:
         st.markdown("### Créditos adquiridos")
         nota("UCP y Outbound son bolsas separadas: los créditos se compran para una línea y solo sirven para esa "
              "línea. Por eso cada compra se registra con su línea. Hoy la tarifa por país es la misma en las dos. "
@@ -1569,6 +1909,10 @@ if "Configuración" in tabs:
                                                           help="Línea para la que se compraron los créditos."),
                 "Créditos": st.column_config.NumberColumn("Créditos", min_value=0, step=1, format="localized",
                                                           required=True),
+                COL_PRECIO: st.column_config.NumberColumn(
+                    COL_PRECIO, min_value=0.0, step=0.01, format="%.2f",
+                    help="Opcional. Déjalo vacío para usar el precio de WhatsApp de Configuración; llénalo si esta "
+                         "compra se pagó a otro precio."),
                 "Nota": st.column_config.TextColumn("Nota", width="large"),
             })
         c1, c2, c3 = st.columns(3)
@@ -1576,6 +1920,12 @@ if "Configuración" in tabs:
         c2.metric("Adquiridos Outbound", num(presupuestos["Outbound"]["creditos_totales"]))
         c3.metric("Total ambas líneas", num(presupuestos["Ambas líneas"]["creditos_totales"]),
                   help="Suma de las dos bolsas. Los créditos de una línea no se pueden usar en la otra.")
+        valor_l = {l: usd_creditos(presupuestos[l]["creditos_totales"], l) for l in LINEAS_COMPRA}
+        partes_v = [f"{l}: {txt_usd(valor_l[l])} (a US$ {txt_precio(PRECIO_LINEA[l])} por 1.000)"
+                    if PRECIO_LINEA[l] is not None else f"{l}: sin precio" for l in LINEAS_COMPRA]
+        st.caption("Valor de lo adquirido" + ESTIMADO_USD + ": " + " · ".join(partes_v) + ". El precio general de "
+                   "WhatsApp se cambia en Todos los canales → Configuración; si una compra tuvo otro precio, "
+                   "escríbelo en su fila.")
         if len(compras_sin_linea):
             st.warning(f"{len(compras_sin_linea)} compra(s) no tienen línea y no se están contando. Elige UCP u "
                        "Outbound en la columna Línea.", icon=":material/warning:")
@@ -1627,7 +1977,8 @@ if "Configuración" in tabs:
         b1, b2, _ = st.columns([1, 1, 3])
         if b1.button("Guardar", type="primary", icon=":material/save:", disabled=not hay_cambios, width="stretch"):
             compras_a_guardar = [{"fecha": (f"{pd.Timestamp(r['Fecha']):%Y-%m-%d}" if pd.notna(r["Fecha"]) else ""),
-                                  "linea": r["Línea"] or "", "creditos": r["Créditos"], "nota": r["Nota"]}
+                                  "linea": r["Línea"] or "", "creditos": r["Créditos"], "nota": r["Nota"],
+                                  "precio_usd_1000": r[COL_PRECIO] if pd.notna(r[COL_PRECIO]) else None}
                                  for _, r in compras_vigentes.iterrows() if r["Créditos"] > 0]
             L.guardar_creditos(RUTA_CONFIG, config, {l: presupuestos[l]["unidades"] for l in LINEAS_COMPRA},
                                compras_a_guardar)
@@ -1643,8 +1994,6 @@ if "Configuración" in tabs:
         st.caption("Los cambios se ven en todo el tablero apenas se escriben. Al guardar quedan en config.json para "
                    "la próxima vez y para las alertas por correo.")
 
-        seccion_unidades_y_journeys()
-
         st.markdown("### Otros ajustes")
         st.markdown(
             f"- **Umbrales del estado:** Atención desde {amarillo_pct:g} %, Crítico desde {rojo_pct:g} % "
@@ -1654,3 +2003,155 @@ if "Configuración" in tabs:
             "- **Responsables por unidad y alertas:** `alertas.json` (ver README).\n"
             "- **Tarifas:** carpeta `tarifas/`, un archivo por vigencia.\n"
             "- **Logo e ícono:** carpeta `assets/`.")
+
+
+# ---------------------------------------------------------------------------
+# Todos los canales (consolidado) y canales sin conectar
+# ---------------------------------------------------------------------------
+
+def ir_a_canal(nombre: str) -> None:
+    st.session_state["canal"] = nombre
+
+
+def barra_canales(partes: list[tuple[str, float]], total: float | None, formato) -> str:
+    """Barra dividida por canal (cada parte en su color) y leyenda. Con `total`, lo que sobra queda en gris."""
+    suma = sum(v for _, v in partes)
+    base = total if total and total > 0 else suma
+    if not base:
+        return '<div class="lado-nota">Sin datos en el periodo.</div>'
+    segmentos = "".join(
+        f'<div class="seg" style="width:{max(v / base * 100, 0):.2f}%; background:{COLOR_CANAL[c]};" '
+        f'title="{NOMBRE_CANAL[c]}: {formato(v)}"></div>' for c, v in partes if v > 0)
+    leyenda = "".join(
+        f'<span><i style="background:{COLOR_CANAL[c]};"></i>{NOMBRE_CANAL[c]} <b>{formato(v)}</b> '
+        f'({v / base * 100:.0f} %)</span>' for c, v in partes)
+    if total and total > 0:
+        resto = max(total - suma, 0)
+        leyenda += f'<span><i style="background:#E3E7EE;"></i>Disponible <b>{formato(resto)}</b></span>'
+    return f'<div class="barra-canales">{segmentos}</div><div class="leyenda-canales">{leyenda}</div>'
+
+
+def tarjeta_pendiente(c: str) -> str:
+    return (f'<div class="semaforo-item canal-pendiente" style="border-color:{COLOR_CANAL[c]};">'
+            f'<div class="semaforo-cabecera"><div class="semaforo-titulo">{NOMBRE_CANAL[c]}</div>'
+            f'<span class="insignia" style="background:#F3F5F9; color:#52514E; border:1px solid #C9CDD3;">Sin conectar'
+            f'</span></div><div class="pendiente-texto">Aún no está conectado: falta su reporte de Marketing Cloud '
+            f'y su tabla de tarifas. Cuando estén, aparecerá aquí con sus créditos, su gasto y sus entregas.</div></div>')
+
+
+def pagina_todos() -> None:
+    e_w = estados["Ambas líneas"]
+    with tabs_todos["Resumen"]:
+        st.markdown(f"### Todos los canales · {nombre_ambito}")
+        nota("Cada canal tiene su propia bolsa de créditos y sus créditos no valen lo mismo, así que aquí se comparan "
+             "en lo que sí se puede sumar: <b>dólares</b> (con el precio por 1.000 créditos de cada canal) y "
+             "<b>entregas</b>. Por ahora solo WhatsApp está conectado.")
+
+        al = "a la fecha" if (fin >= fin_datos and not futuro) else f"al {fin:%d/%m/%Y}"
+        gasto = {"whatsapp": e_w.get("usd") or 0.0}
+        comprado = e_w.get("usd_disponible")
+        st.markdown(f"#### Gasto en dólares {al}{ESTIMADO_USD}")
+        if comprado:
+            st.markdown(f'<div class="cifra-grande">{txt_usd(sum(gasto.values()))} <small>de {txt_usd(comprado)} '
+                        f'{"comprados" if not unidad_sel else "asignados"} ({pct(sum(gasto.values()) / comprado)})'
+                        f'</small></div>', unsafe_allow_html=True)
+            st.markdown(barra_canales([(c, v) for c, v in gasto.items()], comprado, txt_usd), unsafe_allow_html=True)
+        else:
+            st.info("Falta el precio por 1.000 créditos para calcular el gasto en dólares. Se define en "
+                    "Todos los canales → Configuración.", icon=":material/payments:")
+
+        entregas = {"whatsapp": float(periodo["deliveries"].sum())}
+        st.markdown(f"#### Entregas del {inicio:%d/%m/%Y} al {fin_real:%d/%m/%Y}")
+        st.markdown(f'<div class="cifra-grande">{num(sum(entregas.values()))} <small>mensajes entregados</small></div>',
+                    unsafe_allow_html=True)
+        st.markdown(barra_canales(list(entregas.items()), None, num), unsafe_allow_html=True)
+
+        st.markdown("#### Cada canal")
+        cols = st.columns(len(CANALES))
+        for col, c in zip(cols, CANALES):
+            with col:
+                if c in CANALES_CONECTADOS:
+                    e_c = dict(e_w, titulo=NOMBRE_CANAL[c])
+                    tarjeta(e_c)
+                    st.button(f"Ver {NOMBRE_CANAL[c]}", key=f"ir_canal_{c}", on_click=ir_a_canal, args=(c,),
+                              icon=":material/arrow_forward:", width="stretch")
+                else:
+                    st.markdown(f'<div class="semaforo">{tarjeta_pendiente(c)}</div>', unsafe_allow_html=True)
+
+        if not periodo.empty:
+            semanal = periodo.assign(usd=periodo["creditos"] * periodo["linea"].map(PRECIO_LINEA).astype(float) / 1000)
+            tabla_s, orden_s = agrupar(semanal.assign(**{"creditos": semanal["usd"]}), "semana")
+            st.markdown(f"#### Gasto por semana{ESTIMADO_USD}")
+            st.markdown(f'<div class="titulo-tipo" style="border-color:{COLOR_CANAL["whatsapp"]};">WhatsApp · USD</div>',
+                        unsafe_allow_html=True)
+            grafica_barras(tabla_s, "semana", "creditos", orden=orden_s, titulo_valor="USD",
+                           color=COLOR_CANAL["whatsapp"], marcas=marcas_tarifa("semana"))
+            tabla_e, orden_e = agrupar(periodo, "semana")
+            st.markdown("#### Entregas por semana")
+            st.markdown(f'<div class="titulo-tipo" style="border-color:{COLOR_CANAL["whatsapp"]};">WhatsApp · Entregas</div>',
+                        unsafe_allow_html=True)
+            grafica_barras(tabla_e, "semana", "deliveries", orden=orden_e, titulo_valor="Entregas",
+                           color=COLOR_CANAL["whatsapp"])
+            st.caption("Cuando se conecten Correo y SMS, cada canal tendrá su gráfica aquí, una debajo de la otra.")
+
+        if not unidad_sel:
+            st.markdown("#### Por unidad")
+            filas_u = []
+            for u in L.UNIDADES:
+                d_u = periodo[periodo["unidad"] == u]
+                filas_u.append({"Unidad": NOMBRE_UNIDAD_APP[u], "w_usd": round(usd_de(d_u) or 0.0),
+                                "w_ent": float(d_u["deliveries"].sum()), "correo": "Sin conectar", "sms": "Sin conectar"})
+            vista_u = pd.DataFrame(filas_u)
+            st.dataframe(vista_u, hide_index=True, width="stretch", column_config={
+                "w_usd": st.column_config.NumberColumn(f"WhatsApp · gasto USD{ESTIMADO_USD}", format="localized"),
+                "w_ent": st.column_config.NumberColumn("WhatsApp · entregas", format="localized"),
+                "correo": st.column_config.TextColumn("Correo"), "sms": st.column_config.TextColumn("SMS")})
+            st.caption(f"Gasto y entregas del periodo consultado ({inicio:%d/%m/%Y} al {fin_real:%d/%m/%Y}).")
+
+    if "Configuración" in tabs_todos:
+        with tabs_todos["Configuración"]:
+            st.markdown("### Precio de los créditos")
+            nota("Cuánto cuestan 1.000 créditos de cada canal, en dólares. Sirve para mostrar el gasto en dólares y "
+                 "comparar canales. Salesforce no publica este valor: sale del contrato o de la orden de compra. "
+                 "Mientras no esté confirmado, el dashboard marca los dólares como «estimado».")
+            base_p = pd.DataFrame([{"Canal": NOMBRE_CANAL[c], "Precio": PRECIOS.get(c), "Confirmado": PRECIOS_OK.get(c, False)}
+                                   for c in CANALES])
+            precios_ed = st.data_editor(
+                base_p, key="editor_precios", hide_index=True, width="stretch", disabled=["Canal"],
+                column_config={
+                    "Canal": st.column_config.TextColumn("Canal"),
+                    "Precio": st.column_config.NumberColumn("USD por 1.000 créditos", min_value=0.0, step=0.01,
+                                                            format="%.2f"),
+                    "Confirmado": st.column_config.CheckboxColumn(
+                        "Confirmado", help="Márcalo cuando el valor venga del contrato o la factura."),
+                })
+            if st.button("Guardar precios", type="primary", icon=":material/save:"):
+                nuevos_p = {c: (float(r["Precio"]) if pd.notna(r["Precio"]) and float(r["Precio"]) > 0 else None)
+                            for c, (_, r) in zip(CANALES, precios_ed.iterrows())}
+                nuevos_ok = {c: bool(r["Confirmado"]) for c, (_, r) in zip(CANALES, precios_ed.iterrows())}
+                L.guardar_precios(RUTA_CONFIG, config, nuevos_p, nuevos_ok)
+                st.session_state.pop("editor_precios", None)
+                st.cache_data.clear()
+                st.toast("Precios guardados en config.json", icon=":material/check:")
+                st.rerun()
+            st.caption("En WhatsApp, si una compra se pagó a otro precio, se escribe en su fila en WhatsApp → Créditos.")
+            seccion_unidades_y_journeys()
+
+
+def pagina_pendiente(c: str) -> None:
+    st.markdown(f"### {NOMBRE_CANAL[c]}")
+    st.markdown(f'<div class="semaforo">{tarjeta_pendiente(c)}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"Para conectar **{NOMBRE_CANAL[c]}** se necesita:\n"
+        f"1. **El reporte de Marketing Cloud** de {NOMBRE_CANAL[c].lower()}, como el `data.xlsx` de WhatsApp.\n"
+        f"2. **Su tabla de tarifas** (multiplicadores de Salesforce Message Credits para {NOMBRE_CANAL[c].lower()}), "
+        "con su fecha de vigencia.\n"
+        "3. **Sus compras de créditos** y el **precio por 1.000 créditos** (Todos los canales → Configuración).\n\n"
+        "Con eso, este canal tendrá las mismas pestañas que WhatsApp: Resumen, Proyección, Journeys y Detalle, "
+        "separadas por unidad.")
+
+
+if canal == "todos":
+    pagina_todos()
+elif canal not in CANALES_CONECTADOS:
+    pagina_pendiente(canal)

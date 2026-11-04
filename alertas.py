@@ -478,8 +478,9 @@ def main(argv: list[str] | None = None) -> int:
 
     def informe(unidad: str, motivo: str, vista_previa: bool = False) -> tuple[str, str, str]:
         logo_src = (logo_data_uri(logo) if vista_previa else f"cid:{CID_LOGO}") if logo else None
+        asignado_lineas = {l: L.config_linea(config, l)["unidades"][unidad] for l in L.LINEAS_COMPRA}
         return I.informe_unidad(unidad, envios, tarifas, asignado[unidad], amarillo, rojo, info, motivo,
-                                plantilla, logo_src)
+                                plantilla, logo_src, asignado_lineas)
 
     def informe_general(pend: list[dict], aviso: str | None, vista_previa: bool = False) -> tuple[str, str, str]:
         logo_src = (logo_data_uri(logo) if vista_previa else f"cid:{CID_LOGO}") if logo else None
