@@ -166,11 +166,11 @@ CSS_ACCESO = """
 <style>
 [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"] {display:none}
 .acceso-marca {text-align:center; margin: 28px 0 18px}
-.acceso-marca img {max-height:64px; margin-bottom:10px}
+.acceso-marca img {max-height:140px; max-width:320px; margin-bottom:14px}
 .acceso-institucion {font-size:13px; color:#52514e; letter-spacing:.2px}
-.acceso-titulo {font-size:26px; font-weight:650; color:#1F3864; margin-top:4px}
+.acceso-titulo {font-size:28px; font-weight:700; color:#2C5697; margin-top:4px}
 .acceso-sub {font-size:14px; color:#52514e; margin-top:4px}
-[class*="st-key-caja-acceso"] {border:1px solid #E1E5EC; border-radius:12px; padding:22px 24px 10px;
+[class*="st-key-caja-acceso"] {border:1px solid #E1E5EC; border-top:4px solid #F8CD00; border-radius:12px; padding:22px 24px 10px;
   background:#FFFFFF; box-shadow:0 1px 3px rgba(16,24,40,.06)}
 .acceso-nota {font-size:12.5px; color:#52514e; margin:6px 0 12px; line-height:1.45}
 .acceso-paso {font-size:12px; font-weight:600; color:#1F3864; text-transform:uppercase; letter-spacing:.6px;
@@ -603,6 +603,9 @@ def menu_perfil(ctx: dict) -> None:
                     etiqueta = PAGINAS[clave] + (f" · {pendientes} por aprobar" if clave == "usuarios" and pendientes else "")
                     st.button(etiqueta, icon=icono, width="stretch", key=f"menu_{clave}", on_click=ir, args=(clave,),
                               type="tertiary")
+                import guia
+                st.button("Guía rápida", icon=":material/help:", width="stretch", key="menu_guia", on_click=guia.abrir,
+                          type="tertiary")
                 if not ctx["pruebas"] and st.button("Cerrar sesión", icon=":material/logout:", width="stretch",
                                                     key="menu_salir", type="tertiary"):
                     salir()
@@ -664,6 +667,31 @@ def seccion_foto(ctx: dict) -> None:
             st.rerun()
 
 
+NIVELES_ALERTA = {"todas": "Todas (Atención y Crítico)", "criticas": "Solo críticas"}
+
+
+def seccion_alertas(ctx: dict, nombres: dict[str, str]) -> None:
+    """Cada persona elige qué correos de alerta recibe de sus unidades (los envía alertas.py, ver README)."""
+    st.markdown("### Alertas por correo")
+    unidades_txt = "todas las unidades" if ctx["admin"] else ", ".join(nombres[u] for u in ctx["unidades"])
+    st.caption(f"Sobre {unidades_txt}. Los responsables de cada unidad las reciben siempre; aquí decides si también "
+               "te llegan a ti.")
+    pref = (A.perfil(ctx["correo"]) or {}).get("alertas") or {}
+    with st.form("form_alertas", border=True):
+        unidades = st.toggle("Avisarme cuando una de mis unidades cruce un umbral", value=bool(pref.get("unidades")))
+        nivel = st.radio("¿Cuáles?", list(NIVELES_ALERTA), format_func=NIVELES_ALERTA.get, horizontal=True,
+                         index=list(NIVELES_ALERTA).index(pref.get("nivel", "todas")))
+        semanal = st.toggle("Enviarme el resumen semanal de mis unidades (los lunes)", value=bool(pref.get("semanal")))
+        ok = st.form_submit_button("Guardar alertas", type="primary")
+    if ok:
+        nuevo = {"unidades": unidades, "nivel": nivel, "semanal": semanal}
+        A.guardar_perfil(ctx["correo"], lambda p: p.update(alertas=nuevo), "Preferencias de alertas")
+        A.registrar("Cambia sus alertas por correo", ctx["correo"],
+                    ("alertas " + NIVELES_ALERTA[nivel].lower() if unidades else "sin alertas")
+                    + ("; con resumen semanal" if semanal else ""))
+        st.toast("Alertas guardadas", icon=":material/notifications_active:")
+
+
 def pagina_cuenta(ctx: dict, nombres: dict[str, str], responsables: dict) -> None:
     correo = ctx["correo"]
     registro = A.usuario(correo) or {}
@@ -682,6 +710,7 @@ def pagina_cuenta(ctx: dict, nombres: dict[str, str], responsables: dict) -> Non
             if pedidas:
                 st.caption("Pendientes de aprobación: " + ", ".join(pedidas))
             _pedir_otra_unidad(correo, registro, nombres, responsables)
+        seccion_alertas(ctx, nombres)
     with c2:
         st.markdown("### Cambiar contraseña")
         with st.form("form_cambiar", border=True):

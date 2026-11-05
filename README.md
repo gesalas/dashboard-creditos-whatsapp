@@ -32,6 +32,9 @@ En Windows, si `python` no se reconoce, usar `py` en su lugar (`py -m streamlit 
 | `config.json` | Compras de créditos con su línea (`compras`), asignación a unidades por línea (`ucp`, `outbound`; los totales y `general` se calculan solos), umbrales del semáforo (`semaforo`) y textos del encabezado (`marca`). Precios por canal (`precios_usd_1000`), unidades y journeys. Se edita desde WhatsApp → Créditos y Todos los canales → Configuración. | Cuando se compren créditos o cambie la asignación |
 | `acceso.json` | Dominio permitido para crear cuentas y lista de correos del **Equipo CRM** (administradores). | Cuando entre o salga alguien del Equipo CRM |
 | `usuarios.json`, `bitacora.json`, `perfiles.json` | Cuentas (contraseñas cifradas con bcrypt), registro de cambios, y foto y personalización de cada persona. Los crea la app; no se suben con git (ver Acceso). | Solos |
+| `canal_correo.py` | El canal Correo (estado, remitentes, journeys, créditos). Cada canal nuevo puede seguir el mismo patrón. | Desarrollo |
+| `estilos.py` | Los estilos (CSS): forma, espaciado, adaptación a zoom y celular, impresión. Los colores vienen del tema. | Desarrollo |
+| `guia.py`, `novedades.py` | La guía rápida del primer ingreso y el recuadro «Desde tu última visita». | Desarrollo |
 | `personalizar.py`, `temas.py` | La página Personalizar tablero (tema, colores, secciones) y los temas con sus colores. | Desarrollo |
 | `acceso.py`, `sesion.py`, `almacen.py`, `correo_app.py` | Cuentas y roles, pantallas de acceso, dónde se guardan los archivos y envío de correos de la app. | Desarrollo |
 | `logica.py` | Todos los cálculos. No depende de Streamlit. | Desarrollo |
@@ -87,9 +90,23 @@ Para entrar hay que iniciar sesión. Quien encuentre el enlace sin una cuenta ap
 
 **Menú de perfil (arriba a la derecha):** botón con la foto y el nombre de la persona. Al abrirlo muestra su correo y rol, y lleva a Mi cuenta, Personalizar tablero, Usuarios y Bitácora (estas dos solo para el Equipo CRM; Usuarios muestra cuántas solicitudes hay por aprobar) y Cerrar sesión. Sin foto, se ven las iniciales.
 
+**Alertas de cada persona (Mi cuenta → Alertas por correo):** cada quien decide si le llegan las alertas de sus unidades (todas o solo las críticas) y el resumen semanal de los lunes. Los responsables de alertas.json las reciben siempre; esto suma a las personas que lo pidan. Las envía `alertas.py` (en el computador del Equipo CRM), que lee estas preferencias de `perfiles.json`, en local o en GitHub si `.streamlit/secrets.toml` tiene el token.
+
+**Guía rápida:** 4 pasos que aparecen la primera vez que alguien entra (créditos y canales, el semáforo, su vista y lo útil del día a día). Se vuelve a abrir desde el menú del perfil.
+
+**Desde tu última visita:** al entrar, un recuadro dice qué cambió desde la vez anterior: datos nuevos, créditos usados y cuánto subió el porcentaje, unidades que cambiaron de estado, correos nuevos y (Equipo CRM) remitentes nuevos sin unidad.
+
+**Descargar PDF:** junto al título; abre la ventana de impresión con lo que se está viendo, sin la barra lateral ni los botones (elegir «Guardar como PDF»).
+
+**Al abrir el tablero** (Personalizar): canal y unidad con los que abre cada persona.
+
 **Mi cuenta:** subir o quitar la foto de perfil (se ve grande antes de guardarla; se recorta en cuadrado y se guarda pequeña, 256 px), cambiar la contraseña, pedir acceso a otra unidad y cerrar sesión en todos los equipos.
 
-**Personalizar tablero (cada persona el suyo):** se elige un **tema** (Institucional claro, Oscuro, Carbón, Otoño, Vino tinto o Alto contraste para accesibilidad) y, encima, el color principal y los de Marketing y Utility. Lo que se elige se ve de una vez como vista previa; «Guardar» lo conserva y «Descartar» vuelve a lo guardado. Solo se guardan los colores que cambian frente al tema, así que al cambiar de tema se conservan los que la persona eligió a propósito. Los temas están en `temas.py`. También se arrastran las secciones del Resumen para cambiar su orden o pasarlas a «Ocultas», y se elige el color de cada unidad (se usa en las gráficas que comparan unidades, en *Gasto por unidad* y en las tarjetas de Unidades). «Volver a lo predeterminado» deshace todo. Se guarda en `perfiles.json` junto con la foto (en el enlace publicado, en la rama `datos-acceso`, como los usuarios).
+**Personalizar tablero (cada persona el suyo):**
+- **Tema** (16, en cuatro grupos): *Institucionales* (Javeriana —el predeterminado, con el azul #2C5697 y el amarillo #F8CD00 de la universidad—, Javeriana noche y Azul clásico), *Oscuros* (Oscuro, Carbón, Medianoche violeta, Bosque nocturno), *Claros de color* (Otoño, Vino tinto, Océano, Bosque, Lavanda, Grafito claro) y *Accesibilidad* (Alto contraste oscuro, Alto contraste claro y Apto para daltonismo, con la paleta Okabe-Ito).
+- **Colores** encima del tema: principal, acento, Marketing, Utility y cada unidad. Se guardan **por tema**: si en Javeriana Mercadeo es rosado y se pasa a Carbón, Mercadeo toma el color de Carbón; al volver a Javeriana vuelve a ser rosado.
+- **Cómo se ve:** tamaño del texto (normal, grande, muy grande), tarjetas con color o sobrias (solo el borde de color) y espaciado cómodo o compacto. Pensado para quien usa zoom o siente el tablero muy cargado.
+- Lo elegido se ve de una vez. Arriba hay una barra fija con «Guardar», «Descartar» y «Volver a lo predeterminado». Si la persona sale de la página sin guardar, el tablero le pregunta si quiere guardar, descartar o seguir editando. Los temas están en `temas.py`. También se arrastran las secciones del Resumen para cambiar su orden o pasarlas a «Ocultas», y se elige el color de cada unidad (se usa en las gráficas que comparan unidades, en *Gasto por unidad* y en las tarjetas de Unidades). «Volver a lo predeterminado» deshace todo. Se guarda en `perfiles.json` junto con la foto (en el enlace publicado, en la rama `datos-acceso`, como los usuarios).
 
 **Bitácora (Equipo CRM):** quién hizo qué y cuándo: cuentas creadas, aprobaciones y rechazos, cambios de unidades de una cuenta, desactivaciones, contraseñas temporales, bloqueos, inicios de sesión y cambios de créditos, precios y unidades (con lo que cambió). Se puede buscar, filtrar y descargar en CSV.
 
@@ -176,6 +193,12 @@ Si algo está en amarillo o rojo aparece además un aviso. Los umbrales se cambi
 
 ## Barra lateral y encabezado
 
+**Pantallas pequeñas, zoom y celular:** las filas de tarjetas tienen todas la misma altura, con sus botones alineados, y se reacomodan solas según el ancho disponible (4 tarjetas pasan a 2 por fila y luego a 1; 3 y 2 pasan a 1). Títulos y cifras grandes se ajustan al ancho; en el celular la barra lateral se esconde y se abre con «>>».
+
+**Enlaces útiles** (barra lateral): Marketing Cloud y las tablas oficiales de Salesforce Message Credits de cada canal. Se editan en Todos los canales → Configuración.
+
+**Estado del sistema** (Todos los canales → Configuración, Equipo CRM): revisa de un vistazo el envío de correos, dónde se guardan los usuarios, la clave del «recordarme», el Equipo CRM, la antigüedad de los reportes, los remitentes sin unidad y los precios.
+
 Secciones del Resumen (en este orden por defecto; cada persona puede cambiarlo): Estado de los créditos, Consumo del periodo, Consumo por semana, Consumo por mes, Gasto por unidad (USD), Consumo por unidad y Países con mayor consumo. *Gasto por unidad* y *Consumo por unidad* solo se ven en la vista del Equipo CRM.
 
 La barra lateral agrupa los filtros en tarjetas: **Vista**, **Línea de WhatsApp** (cada opción con su descripción o número), **Periodo a consultar** (con las fechas y días que quedan elegidos) y **Datos** (hasta qué día llegan los datos, con un punto verde o amarillo según qué tan recientes son; fecha del reporte, tablas de tarifas y el botón para recargar).
@@ -231,6 +254,11 @@ Orden en WhatsApp: Resumen, Proyección, Unidades (solo Equipo CRM), Journeys, D
 - **Créditos** (solo Equipo CRM): compras por línea (con precio opcional), asignación de créditos a unidades y dónde cambiar los demás ajustes. Las unidades, los journeys y los precios por canal están en Todos los canales → Configuración.
 
 ## Actualización automática de data.xlsx desde el correo
+
+**También el correo:** `actualizar_datos.py` trae `data_correo.xlsx` si en `actualizar_datos.json` la sección `correo` tiene `"activo": true`. Usa sus propios filtros (`asunto_contiene`, `adjunto_contiene`, por defecto el adjunto debe tener «Data_correo»); lo que no se escriba se toma de la configuración general (buzón, carpeta, días). Revisa que el archivo sea un reporte de correo válido y más nuevo antes de reemplazarlo (el anterior queda como `data_correo_anterior.xlsx`) y lo publica en GitHub junto con data.xlsx si está activo. `py actualizar_datos.py --solo correo` actualiza solo el correo.
+
+**Revisión diaria:** cada vez que corre `alertas.py` revisa que los reportes se puedan leer y no lleguen vacíos o con las columnas cambiadas, y avisa una vez al día si hay un problema. También avisa (una sola vez por remitente) cuando el reporte de correo trae remitentes nuevos sin unidad. Todo esto también se ve en Configuración → Estado del sistema, junto con la fecha de vencimiento del token de GitHub (el Equipo CRM ve además un aviso 15 días antes de que venza).
+
 
 `actualizar_datos.py` busca en el Outlook de escritorio el correo más reciente con el reporte, toma el adjunto de Excel, revisa que sea un reporte válido y más nuevo que el actual, y reemplaza `data.xlsx` (el anterior queda como `data_anterior.xlsx`). Si se activa, además lo sube a GitHub para que el dashboard publicado se actualice solo.
 

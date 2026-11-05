@@ -10,3 +10,4 @@ bitacora.json
 .streamlit/secrets.toml
 .streamlit/clave_sesion.txt
 perfiles.json
+data_correo_anterior.xlsx

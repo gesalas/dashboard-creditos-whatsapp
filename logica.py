@@ -799,3 +799,69 @@ def leer_tarifas_sms(carpeta: Path) -> pd.DataFrame:
         filas.append(t)
     return pd.concat(filas, ignore_index=True) if filas else pd.DataFrame(columns=["ISO", "Country", "Multiplier",
                                                                                    "vigente_desde"])
+
+
+
+# ---------------------------------------------------------------------------
+# Enlaces útiles (barra lateral). Se cambian en Todos los canales → Configuración (config.json, "enlaces").
+# ---------------------------------------------------------------------------
+
+ENLACES_POR_DEFECTO = [
+    {"titulo": "Marketing Cloud", "url": "https://mc.exacttarget.com/",
+     "descripcion": "Entrar a Marketing Cloud (journeys, reportes, Intelligence)."},
+    {"titulo": "Multiplicadores de Salesforce Message Credits",
+     "url": "https://www.salesforce.com/marketing/salesforce-message-credits/",
+     "descripcion": "Página oficial con las tablas vigentes de cada canal."},
+    {"titulo": "Tarifas de WhatsApp (desde nov. 2026)",
+     "url": "https://www.salesforce.com/en-us/wp-content/uploads/sites/4/Salesforce-Message-Credits-WhatsApp-Rate-Card-per-message-Nov-2026-1.pdf",
+     "descripcion": "Créditos por mensaje según país y tipo de plantilla."},
+    {"titulo": "Tarifas de correo (desde sep. 2026)",
+     "url": "https://www.salesforce.com/en-us/wp-content/uploads/sites/4/Salesforce-Message-Credits-Email_September-2026.pdf",
+     "descripcion": "Correo estándar = 1 crédito; prioridad 4; con adjunto 5."},
+    {"titulo": "Tarifas de SMS (desde nov. 2026)",
+     "url": "https://www.salesforce.com/en-us/wp-content/uploads/sites/4/Salesforce-Message-Credits-SMS-1000-NOV-2026-1.pdf",
+     "descripcion": "Créditos por SMS según el país (Colombia 0,74)."},
+]
+
+
+def enlaces(config: dict) -> list[dict]:
+    lista = config.get("enlaces")
+    lista = ENLACES_POR_DEFECTO if lista is None else lista
+    return [e for e in lista if str(e.get("url") or "").startswith(("http://", "https://")) and e.get("titulo")]
+
+
+def guardar_enlaces(ruta: Path, config: dict, lista: list[dict]) -> None:
+    nuevo = dict(config)
+    nuevo["enlaces"] = lista
+    escribir_config(ruta, nuevo)
+
+
+
+# ---------------------------------------------------------------------------
+# Revisión de los reportes (la usan las alertas diarias y el Estado del sistema)
+# ---------------------------------------------------------------------------
+
+def validar_reportes(carpeta: Path) -> list[str]:
+    """Problemas que impedirían que el tablero muestre bien los datos: archivos que faltan, que no se pueden
+    leer, que llegan vacíos o con las columnas cambiadas. Lista vacía = todo bien."""
+    carpeta = Path(carpeta)
+    problemas = []
+    ruta_w = carpeta / "data.xlsx"
+    if not ruta_w.exists():
+        problemas.append("Falta data.xlsx (reporte de WhatsApp).")
+    else:
+        try:
+            reporte, _ = leer_reporte(ruta_w)
+            if reporte.empty:
+                problemas.append("data.xlsx (WhatsApp) llegó sin filas.")
+        except Exception as error:
+            problemas.append(f"data.xlsx (WhatsApp) no se puede leer: {error}")
+    ruta_c = carpeta / "data_correo.xlsx"
+    if ruta_c.exists():
+        try:
+            envios, _ = leer_reporte_correo(ruta_c)
+            if envios.empty:
+                problemas.append("data_correo.xlsx (Correo) llegó sin envíos.")
+        except Exception as error:
+            problemas.append(f"data_correo.xlsx (Correo) no se puede leer: {error}")
+    return problemas

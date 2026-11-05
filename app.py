@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import sys
 import unicodedata
 from datetime import date
 from pathlib import Path
@@ -22,6 +23,9 @@ import streamlit as st
 
 import acceso as A
 import almacen
+import estilos as E
+import guia as G
+import novedades as N
 import logica as L
 import personalizar as P
 import temas as T
@@ -79,186 +83,7 @@ SEMAFORO = {
 }
 
 st.markdown("<style>" + T.variables(T.resolver(T.PREDETERMINADO)) + "</style>", unsafe_allow_html=True)
-st.markdown(
-    """
-    <style>
-    .block-container {padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1400px;}
-    [data-testid="stMetric"] {
-        background: var(--t-superficie);
-        border: 1px solid var(--t-borde);
-        border-radius: 10px;
-        padding: 14px 16px 12px 16px;
-    }
-    [data-testid="stMetricLabel"] p {color: var(--t-texto-sec); font-size: 0.85rem;}
-    [data-testid="stMetricValue"] {font-size: 1.65rem; font-weight: 600;}
-    .stTabs [data-baseweb="tab-list"] {gap: 4px; border-bottom: 1px solid var(--t-borde);}
-    .stTabs [data-baseweb="tab"] {padding: 8px 16px; font-weight: 500;}
-    h1 {font-weight: 650; letter-spacing: -0.01em;}
-    h3 {font-weight: 600; margin-top: 0.6rem;}
-    .nota {color: var(--t-texto-sec); font-size: 0.88rem; margin: -0.4rem 0 0.8rem 0;}
-    .semaforo {display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 0.6rem 0 1.2rem 0;}
-    .semaforo-item {border-radius: 12px; padding: 16px 18px 14px 18px; border: 1px solid; border-left-width: 6px;}
-    .semaforo-cabecera {display: flex; justify-content: space-between; align-items: center; gap: 8px;}
-    .semaforo-titulo {font-size: 0.95rem; color: var(--t-texto); font-weight: 600;}
-    .semaforo-valor {font-size: 2.6rem; font-weight: 700; color: var(--t-texto); line-height: 1.1; margin: 6px 0 10px 0;}
-    .semaforo-valor small {display: block; white-space: nowrap; font-size: 0.85rem; font-weight: 500; color: var(--t-texto-sec);
-                           margin: 2px 0 0 1px; line-height: 1.2;}
-    .medidor {position: relative; height: 16px; background: var(--t-borde); border-radius: 999px; overflow: visible;}
-    .medidor-relleno {height: 100%; border-radius: 999px;}
-    .medidor-marca {position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--t-texto); opacity: 0.55;}
-    .medidor-escala {position: relative; height: 16px; font-size: 0.72rem; color: var(--t-texto-sec); margin: 3px 0 12px 0;}
-    .medidor-escala span {position: absolute; transform: translateX(-50%); white-space: nowrap;}
-    .semaforo-cifras {display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 10px;}
-    .cifra-etiqueta {font-size: 0.75rem; color: var(--t-texto-sec);}
-    .cifra-valor {font-size: 1.05rem; font-weight: 650; color: var(--t-texto);}
-    .desglose {display: flex; gap: 8px; flex-wrap: wrap; margin: -4px 0 14px 0;}
-    .chip {padding: 4px 12px; border-radius: 999px; font-size: 0.82rem; border: 1px solid;}
-    .chip-mkt {background: var(--t-mkt-suave); color: var(--t-mkt-texto); border-color: var(--t-mkt-borde);}
-    .chip-uti {background: var(--t-uti-suave); color: var(--t-uti-texto); border-color: var(--t-uti-borde);}
-    .subtitulo-bloque {font-size: 0.8rem; font-weight: 700; color: var(--t-texto-sec); letter-spacing: 0.05em;
-                       text-transform: uppercase; margin: 6px 0 6px 0;}
-    .subtitulo {display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px;}
-    .frescura, .frescura-alerta, .pastilla {font-size: 0.82rem; border-radius: 999px; padding: 3px 10px;
-                                            border: 1px solid var(--t-borde); background: var(--t-superficie2); color: var(--t-texto);}
-    .frescura {background: var(--t-verde-fondo); border-color: var(--t-verde-suave); color: var(--t-verde-borde); font-weight: 600;}
-    .frescura-alerta {background: var(--t-amarillo-fondo); border-color: var(--t-amarillo-suave); color: var(--t-amarillo-borde); font-weight: 600;}
-    .leyenda {display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin: 14px 0 2px 0;
-              font-size: 0.85rem; color: var(--t-texto-sec);}
-    .leyenda .insignia {margin-left: 0; margin-right: 4px;}
-    .leyenda-titulo {font-weight: 700; color: var(--t-texto);}
-    .leyenda-nota {font-style: italic;}
-    @media (max-width: 640px) {
-        .titulo-texto {font-size: 1.75rem;}
-        .titulo-icono img, .titulo-icono svg {width: 36px; height: 36px;}
-        .semaforo-valor {font-size: 2.1rem;}
-    }
-    .semaforo-detalle .semaforo-cifras {grid-template-columns: 1fr 1fr;}
-    .semaforo-detalle .semaforo-valor {font-size: 3rem;}
-    .panel-unidades {border: 1px solid var(--t-borde); border-radius: 12px; padding: 14px 16px; background: var(--t-superficie);
-                     margin: 0.6rem 0 1rem 0;}
-    .panel-titulo {font-size: 0.95rem; font-weight: 600; color: var(--t-texto); margin-bottom: 8px;}
-    .unidad-fila {padding: 10px 0; border-top: 1px solid var(--t-linea);}
-    .unidad-fila:first-of-type {border-top: none;}
-    .unidad-cabecera {display: flex; align-items: center; gap: 4px; margin-bottom: 6px;}
-    .unidad-nombre {font-weight: 600; color: var(--t-texto);}
-    .unidad-pct {margin-left: auto; font-weight: 700; color: var(--t-texto);}
-    .unidad-detalle {font-size: 0.78rem; color: var(--t-texto-sec); margin-top: 6px;}
-    .unidad-fila .medidor {height: 10px;}
-    .unidad-fila .medidor-marca {top: -3px; bottom: -3px;}
-    .franja-titulo {font-size: 0.8rem; font-weight: 700; color: var(--t-texto-sec); letter-spacing: 0.05em;
-                    text-transform: uppercase; padding-top: 9px;}
-    .titulo {display: flex; align-items: center; gap: 14px; margin: 0 0 4px 0;}
-    .titulo-icono img, .titulo-icono svg {width: 46px; height: 46px; display: block;}
-    .titulo-texto {font-size: 2.35rem; font-weight: 700; color: var(--t-texto); letter-spacing: -0.01em; line-height: 1.15;}
-    .insignia {display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 0.78rem;
-               font-weight: 650; text-transform: uppercase; letter-spacing: 0.02em; margin-left: 8px;
-               vertical-align: middle;}
-    .titulo-tipo {font-size: 0.95rem; font-weight: 650; color: var(--t-texto); padding: 2px 0 2px 10px;
-                  border-left: 4px solid; margin: 14px 0 2px 0;}
-    .tipo-mkt {border-color: var(--t-mkt);}
-    .tipo-uti {border-color: var(--t-uti);}
-    .tipo-mkt-texto {color: var(--t-mkt-texto);}
-    .tipo-uti-texto {color: var(--t-uti-texto);}
-    [class*="st-key-caja-mkt"] {border: 2px solid var(--t-mkt) !important; border-radius: 12px;}
-    [class*="st-key-caja-uti"] {border: 2px solid var(--t-uti) !important; border-radius: 12px;}
-    [class*="st-key-caja-mkt"] [data-testid="stMetric"] {border-color: var(--t-mkt-borde);}
-    [class*="st-key-caja-"] [data-testid="stMetricValue"] {font-size: 1.4rem;}
-    [class*="st-key-caja-uti"] [data-testid="stMetric"] {border-color: var(--t-uti-borde);}
-    .cifra-valor small {font-size: 0.78rem; font-weight: 500; color: var(--t-texto-sec);}
-    .cifra-sub {font-size: 0.8rem; font-weight: 500; color: var(--t-texto-sec);}
-    .cifra-mkt {color: var(--t-mkt-texto); font-weight: 700; border-left: 3px solid var(--t-mkt); padding-left: 6px;}
-    .cifra-uti {color: var(--t-uti-texto); font-weight: 700; border-left: 3px solid var(--t-uti); padding-left: 6px;}
-    .stTabs [data-baseweb="tab-list"] {position: sticky; top: 2.9rem; z-index: 5; background: var(--t-fondo);}
-    [data-testid="stSidebar"] {background: var(--t-lateral); border-right: 1px solid var(--t-borde);}
-    [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {padding-top: 0.25rem;}
-    .marca {background: linear-gradient(160deg, var(--t-marca-1) 0%, var(--t-marca-2) 100%); border-radius: 14px;
-            padding: 18px 16px 14px 16px; margin: 0 0 14px 0; color: var(--t-marca-texto); text-align: left;
-            box-shadow: var(--t-sombra-primario);}
-    .marca-logo {background: #FFFFFF; border-radius: 10px; padding: 8px 10px; margin: 0 0 12px 0; display: inline-block;}
-    .marca-logo img {max-height: 52px; max-width: 200px; display: block;}
-    .marca-institucion {font-size: 1.02rem; font-weight: 700; line-height: 1.25;}
-    .marca-area {font-size: 0.8rem; opacity: 0.8; margin-top: 3px;}
-    .marca-producto {display: inline-flex; align-items: center; gap: 7px; font-size: 0.74rem; font-weight: 600;
-                     margin-top: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.12);
-                     letter-spacing: 0.04em; text-transform: uppercase;}
-    .marca-punto {width: 7px; height: 7px; border-radius: 50%; background: #3DDC84; display: inline-block;}
-    [class*="st-key-lado-"] {background: var(--t-superficie); border: 1px solid var(--t-borde); border-radius: 14px;
-                             padding: 12px 12px 12px 12px; gap: 0.55rem; box-shadow: var(--t-sombra);}
-    .lado-titulo {display: flex; align-items: center; gap: 10px; font-size: 0.86rem; font-weight: 700;
-                  color: var(--t-texto); line-height: 1.2;}
-    .lado-icono {font-family: "Material Symbols Rounded"; font-size: 18px; line-height: 1; color: var(--t-primario);
-                 background: var(--t-primario-suave); border-radius: 9px; padding: 6px; font-weight: normal;
-                 font-variation-settings: "FILL" 0, "wght" 500;}
-    .lado-sub {font-size: 0.74rem; font-weight: 500; color: var(--t-texto-ter); margin-top: 2px;}
-    .lado-nota {font-size: 0.72rem; color: var(--t-texto-ter); line-height: 1.35;}
-    [class*="st-key-lado-"] .stMarkdown [data-testid="stMarkdownContainer"] {margin-bottom: 0;}
-    [class*="st-key-lado-linea"] [data-testid="stElementContainer"],
-    [class*="st-key-lado-linea"] [data-testid="stRadio"],
-    [class*="st-key-lado-linea"] [role="radiogroup"] {gap: 6px; width: 100% !important; display: flex; flex-direction: column;}
-    [class*="st-key-lado-linea"] [role="radiogroup"] > div {box-sizing: border-box; align-self: stretch;}
-    [class*="st-key-lado-linea"] [role="radiogroup"] > div {border: 1px solid var(--t-borde); border-radius: 10px;
-                             padding: 7px 10px 7px 10px; width: 100%; background: var(--t-superficie); transition: all .12s;}
-    [class*="st-key-lado-linea"] [role="radiogroup"] > div:hover {border-color: var(--t-borde-fuerte); background: var(--t-superficie2);}
-    [class*="st-key-lado-linea"] [role="radiogroup"] > div[data-selected="true"] {border-color: var(--t-primario);
-                             background: var(--t-primario-suave); box-shadow: inset 3px 0 0 var(--t-primario);}
-    [class*="st-key-lado-linea"] [data-testid="stRadioOption"] {width: 100%; margin: 0;}
-    [class*="st-key-lado-linea"] [data-testid="stRadioOption"] p {font-weight: 600; color: var(--t-texto); font-size: 0.88rem;}
-    [class*="st-key-lado-linea"] [data-testid="stRadioCaption"] {margin: 0 0 0 1.75rem; padding: 0;}
-    [class*="st-key-lado-linea"] [data-testid="stRadioCaption"] p {font-size: 0.72rem; color: var(--t-texto-ter); margin: 0;}
-    .punto-unidad {display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px;
-      vertical-align: 1px;}
-    .modo-pruebas {background: var(--t-amarillo-fondo); border: 1px solid var(--t-amarillo-barra); color: var(--t-amarillo-borde); border-radius: 8px;
-      padding: 8px 10px; font-size: 0.78rem; font-weight: 600; line-height: 1.35; margin-bottom: 10px;}
-    .modo-pruebas-ancho {font-size: 0.85rem; padding: 8px 14px;}
-    .periodo-resuelto {display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;
-                       color: var(--t-texto); background: var(--t-superficie2); border-radius: 8px; padding: 7px 10px; margin: 0;}
-    .periodo-resuelto b {font-weight: 650; color: var(--t-primario);}
-    .dato-fila {display: flex; justify-content: space-between; gap: 10px; font-size: 0.78rem; padding: 6px 0;
-                border-bottom: 1px dashed var(--t-linea); color: var(--t-texto-ter);}
-    .dato-fila:last-of-type {border-bottom: none;}
-    .dato-fila b {color: var(--t-texto); font-weight: 600; text-align: right; display: inline-flex; align-items: center; gap: 6px;}
-    .punto-ok, .punto-alerta {width: 7px; height: 7px; border-radius: 50%; display: inline-block;}
-    .punto-ok {background: var(--t-verde-barra);}
-    .punto-alerta {background: var(--t-amarillo-barra);}
-    [data-testid="stSidebar"] [data-testid="stExpander"] details {background: var(--t-superficie); border-radius: 14px;}
-    [class*="st-key-zona-canal"] {background: var(--t-superficie); border: 1px solid var(--t-borde); border-radius: 14px;
-                                  padding: 14px 16px 12px 16px; margin: 10px 0 6px 0; gap: 0.35rem;
-                                  box-shadow: var(--t-sombra);}
-    .zona-etiqueta {font-size: 0.78rem; font-weight: 700; color: var(--t-texto-sec); letter-spacing: 0.05em;
-                    text-transform: uppercase; margin: 2px 0 2px 2px;}
-    .zona-nota {font-size: 0.78rem; color: var(--t-texto-ter); margin: 0 0 2px 2px;}
-    [class*="st-key-zona-canal"] [role="radiogroup"] {gap: 10px; flex-wrap: wrap;}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"] {
-        border: 1.5px solid var(--t-borde-fuerte) !important; border-radius: 12px !important; background: var(--t-superficie);
-        padding: 10px 20px; min-height: 46px; box-shadow: var(--t-sombra); transition: all .12s;}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"] p {font-size: 1rem; font-weight: 600;
-                                                                             color: var(--t-texto);}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"]:hover {border-color: var(--t-primario) !important;
-                                                                                 background: var(--t-primario-suave);}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"] {
-        background: var(--t-primario); border-color: var(--t-primario) !important; box-shadow: var(--t-sombra-primario);}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"] p,
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"] span {color: var(--t-sobre-primario);}
-    [class*="st-key-linea"] button[data-variant="segmented_control"] {min-height: 40px; padding: 7px 16px;}
-    [class*="st-key-zona-canal"] .stMarkdown [data-testid="stMarkdownContainer"] {margin-bottom: 0;}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"]:hover {
-        background: var(--t-primario-hover); border-color: var(--t-primario-hover) !important;}
-    [class*="st-key-linea"] button[data-variant="segmented_control"] p {font-size: 0.93rem;}
-    .barra-canales {display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: var(--t-borde);
-                    margin: 6px 0 8px 0;}
-    .barra-canales .seg {height: 100%;}
-    .leyenda-canales {display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85rem; color: var(--t-texto-sec);
-                      margin-bottom: 14px;}
-    .leyenda-canales i {display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px;}
-    .leyenda-canales b {color: var(--t-texto);}
-    .cifra-grande {font-size: 1.9rem; font-weight: 700; color: var(--t-texto); margin: 2px 0 0 0;}
-    .cifra-grande small {font-size: 0.95rem; font-weight: 500; color: var(--t-texto-sec);}
-    .canal-pendiente {background: var(--t-superficie2); border-left-width: 6px; min-height: 170px;}
-    .pendiente-texto {font-size: 0.88rem; color: var(--t-texto-sec); margin-top: 14px; line-height: 1.45;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown(E.BASE, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -648,6 +473,9 @@ QUIEN = CTX["correo"]
 TEMA = P.tema_actual(CTX)
 CTX["tema"] = TEMA
 st.markdown(T.css(TEMA), unsafe_allow_html=True)
+_css_vista = P.css_vista(CTX)
+if _css_vista:
+    st.markdown(_css_vista, unsafe_allow_html=True)
 SEMAFORO = T.semaforo(TEMA)
 COLOR_SERIE = COLOR_MARKETING = TEMA["marketing"]
 COLOR_UTILITY = TEMA["utility"]
@@ -900,7 +728,7 @@ ETIQUETA_LINEA = {"Ambas líneas": "Ambas líneas (total)", "UCP vs Outbound": "
 if st.session_state.get("vista") not in (None, *VISTAS):
     st.session_state["vista"] = VISTAS[0]
 if "vista" not in st.session_state:
-    pedida = str(st.query_params.get("unidad", "")).lower().strip()
+    pedida = str(st.query_params.get("unidad", "")).lower().strip() or P.inicio(CTX)["unidad"]
     st.session_state["vista"] = pedida if pedida in VISTAS else VISTAS[0]
 
 def titulo_lado(icono: str, titulo: str, subtitulo: str = "") -> None:
@@ -991,6 +819,10 @@ with st.sidebar:
             st.cache_data.clear()
             st.rerun()
 
+    with st.expander("Enlaces útiles", icon=":material/link:"):
+        st.markdown("\n".join(f"- [{e['titulo']}]({e['url']})" + (f"  \n  <span class='lado-nota'>{e['descripcion']}</span>"
+                                                                    if e.get("descripcion") else "")
+                               for e in L.enlaces(config)), unsafe_allow_html=True)
     with st.expander("Cómo leer este tablero", icon=":material/help:"):
         st.markdown(
             "- **Crédito:** unidad con la que se cobran los mensajes. Cada mensaje consume créditos según el "
@@ -1013,6 +845,15 @@ with st.sidebar:
 
 
 S.menu_perfil(CTX)
+P.avisos(CTX)
+G.mostrar(CTX, hay_otro_dialogo=bool(st.session_state.get("p_pendiente")))
+st.markdown(N.CSS, unsafe_allow_html=True)
+if CTX["admin"] and not CTX["pruebas"]:
+    _vence = almacen.vencimiento_token()
+    if _vence is not None and (_vence - pd.Timestamp.now()).days <= 15:
+        st.warning(f"El token de GitHub vence el {_vence:%d/%m/%Y}. Pídele al dueño del repositorio uno nuevo y "
+                   "cámbialo en los Secrets; si vence, no se podrán guardar usuarios ni cambios.",
+                   icon=":material/key_off:")
 if "aviso_subida" in st.session_state:
     st.warning(st.session_state.pop("aviso_subida"), icon=":material/cloud_off:")
 if CTX["pruebas"]:
@@ -1038,12 +879,13 @@ COLOR_CANAL = {"whatsapp": "#128C7E", "correo": "#7B4FBF", "sms": "#5B6B7F"}
 CANALES_CONECTADOS = {"whatsapp"} | ({"correo"} if correo is not None else set())   # SMS: falta su reporte
 
 if st.session_state.get("canal") not in OPCIONES_CANAL:
-    pedido = str(st.query_params.get("canal", "")).lower().strip()
+    pedido = str(st.query_params.get("canal", "")).lower().strip() or P.inicio(CTX)["canal"]
     st.session_state["canal"] = pedido if pedido in OPCIONES_CANAL else "whatsapp"
 if st.session_state.get("linea_guardada") not in VISTAS_LINEA:
     st.session_state["linea_guardada"] = "Ambas líneas"
 
 zona_titulo = st.container()
+zona_novedades = st.container()
 zona_canal = st.container(key="zona-canal")
 ICONO_CANAL = {"todos": ":material/dashboard:", "whatsapp": ":material/forum:", "correo": ":material/mail:",
                "sms": ":material/sms:"}
@@ -1125,6 +967,9 @@ with zona_titulo:
         + (f'<span class="pastilla">Periodo: {inicio:%d/%m/%Y} – {fin:%d/%m/%Y}</span>'
            if canal != "correo" or info_correo.get("con_fecha") else '<span class="pastilla">Correo: acumulado</span>')
         + '</div></div></div>', unsafe_allow_html=True)
+    st.button("Descargar PDF", icon=":material/picture_as_pdf:", key="boton_pdf", type="tertiary",
+              help="Abre la ventana de impresión con lo que estás viendo; elige «Guardar como PDF».",
+              on_click=lambda: st.session_state.update(imprimir=True))
     if dias_desde > 7 and canal != "correo":
         st.warning(f"El reporte llega hasta el {fecha_max:%d/%m/%Y} ({frescura}). El consumo real puede ser mayor: "
                    "exporta un reporte nuevo de Marketing Cloud y reemplaza data.xlsx.", icon=":material/schedule:")
@@ -1271,10 +1116,11 @@ def etiqueta_corte() -> str:
 
 
 def detalle_agotamiento(e: dict) -> str:
-    """En el total de ambas líneas: qué línea se agota primero (son bolsas separadas)."""
+    """En el total de ambas líneas: qué línea se agota primero (son bolsas separadas). En las demás tarjetas
+    deja el mismo espacio vacío para que las filas de todas las tarjetas queden a la misma altura."""
     if not isinstance(e["agot_ts"], pd.Timestamp) or not e["agot_linea"]:
-        return ""
-    return f'<div class="cifra-sub">Primero se agota {e["agot_linea"]}</div>'
+        return '<div class="cifra-sub cifra-reserva">&nbsp;</div>'
+    return f'<div class="cifra-sub cifra-reserva">Primero se agota {e["agot_linea"]}</div>'
 
 
 def cifras_basicas(e: dict) -> list[tuple]:
@@ -1316,11 +1162,33 @@ def texto_variacion(e: dict) -> str:
     return f"Últimos 7 días: {cambio:+.0f} % frente a los 7 días anteriores."
 
 
+def tarjeta_html(e: dict, detalle: bool = False) -> str:
+    cifras = cifras_detalle(e) if detalle else cifras_basicas(e) + cifras_tipo(e)
+    return tarjeta_semaforo(e["titulo"], e["estado"], e["uso"], cifras, amarillo_pct, rojo_pct, etiqueta_corte())
+
+
 def tarjeta(e: dict, detalle: bool = False) -> None:
     clase = "semaforo semaforo-detalle" if detalle else "semaforo"
-    cifras = cifras_detalle(e) if detalle else cifras_basicas(e) + cifras_tipo(e)
-    st.markdown(f'<div class="{clase}">{tarjeta_semaforo(e["titulo"], e["estado"], e["uso"], cifras, amarillo_pct, rojo_pct, etiqueta_corte())}'
-                f'</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{clase}">{tarjeta_html(e, detalle)}</div>', unsafe_allow_html=True)
+
+
+def fila_tarjetas(clave: str, htmls: list[str], botones: list[dict | None] | None = None, *,
+                  detalle: bool = False) -> None:
+    """Fila de tarjetas, cada una con su botón debajo (opcional).
+
+    Todas quedan a la misma altura y los botones alineados. Se acomoda sola al ancho disponible (zoom del
+    navegador, pantallas pequeñas, celular): 4 tarjetas pasan a 2 por fila y luego a 1; 3 y 2 pasan a 1.
+    Ver las reglas .st-key-fila-* en los estilos."""
+    n = max(1, min(len(htmls), 4))
+    botones = botones or [None] * len(htmls)
+    clase = "semaforo semaforo-detalle" if detalle else "semaforo"
+    with st.container(key=f"fila-{n}-{clave}"):
+        cols = st.columns(n, gap="medium")
+        for i, (html, boton) in enumerate(zip(htmls, botones)):
+            with cols[i % n]:
+                st.markdown(f'<div class="{clase}">{html}</div>', unsafe_allow_html=True)
+                if boton:
+                    st.button(**boton, width="stretch")
 
 
 def fila_medidor(nombre: str, e: dict) -> str:
@@ -1353,21 +1221,17 @@ def bloque_estado() -> None:
         unsafe_allow_html=True)
 
     if vista_linea == "Ambas líneas":
-        cols = st.columns(3)
-        for col, (nombre_l, e) in zip(cols, estados.items()):
-            with col:
-                tarjeta(e)
-                if L.LINEAS[nombre_l] is not None:
-                    st.button(f"Ver detalle de {nombre_l}", key=f"ir_{nombre_l}", on_click=ir_a_linea,
-                              args=(nombre_l,), icon=":material/arrow_forward:", width="stretch")
-                else:
-                    st.button("Comparar UCP vs Outbound", key="ir_versus", on_click=ir_a_linea,
-                              args=("UCP vs Outbound",), icon=":material/compare_arrows:", width="stretch")
+        fila_tarjetas("lineas", [tarjeta_html(e) for e in estados.values()], [
+            dict(label="Ver detalle de " + n, key=f"ir_{n}", on_click=ir_a_linea, args=(n,), icon=":material/arrow_forward:")
+            if L.LINEAS[n] is not None else
+            dict(label="Comparar UCP vs Outbound", key="ir_versus", on_click=ir_a_linea, args=("UCP vs Outbound",),
+                 icon=":material/compare_arrows:")
+            for n in estados])
     elif versus:
-        cols = st.columns(2)
+        fila_tarjetas("versus", [tarjeta_html(estados[n], detalle=True) for n in LINEAS_COMPRA], detalle=True)
+        cols = st.columns(2, gap="medium")
         for col, nombre_l in zip(cols, LINEAS_COMPRA):
             with col:
-                tarjeta(estados[nombre_l], detalle=True)
                 st.caption(texto_variacion(estados[nombre_l]))
                 if not unidad_sel:
                     filas = [fila_medidor(NOMBRE_UNIDAD_APP[u], estado_de(nombre_l, u)) for u in L.UNIDADES]
@@ -1536,20 +1400,21 @@ if "Unidades" in tabs:
         nota(f"Créditos asignados a cada unidad en {'ambas líneas' if versus else texto_linea}, frente a todo lo "
              "que ha usado. Con «Ver la vista de...» el tablero completo muestra solo esa unidad, igual que la "
              "verá su responsable.")
-        cols = st.columns(3)
-        filas_t = []
-        for col, u in zip(cols, L.UNIDADES):
+        filas_t, htmls_u = [], []
+        for u in L.UNIDADES:
             e = estado_de(linea, u)
             e["titulo"] = punto_unidad(u) + NOMBRE_UNIDAD_APP[u]
-            with col:
-                tarjeta(e)
-                st.button(f"Ver la vista de {NOMBRE_UNIDAD_APP[u]}", key=f"vista_{u}", on_click=ir_a_vista,
-                          args=(u,), icon=":material/arrow_forward:", width="stretch")
+            htmls_u.append(tarjeta_html(e))
             tp = L.totales(e["periodo"])
             filas_t.append({"Unidad": NOMBRE_UNIDAD_APP[u], "asignados": e["disponible"], "usados": e["consumido"],
                             "uso": e["uso"] if e["uso"] is not None else float("nan"),
                             "periodo": tp["creditos"], "mkt": tp["creditos_marketing"], "uti": tp["creditos_utility"],
                             "entregas": tp["deliveries"]})
+        por_fila = 4 if len(htmls_u) % 4 == 0 else 3
+        for i in range(0, len(htmls_u), por_fila):   # cada tarjeta con su botón debajo
+            fila_tarjetas(f"unidades-{i}", htmls_u[i:i + por_fila],
+                          [dict(label=f"Ver la vista de {NOMBRE_UNIDAD_APP[u]}", key=f"vista_{u}", on_click=ir_a_vista,
+                                args=(u,), icon=":material/arrow_forward:") for u in L.UNIDADES[i:i + por_fila]])
         st.markdown("### Comparativo de unidades")
         nota(f"Usados en el periodo: del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}.")
         tabla(pd.DataFrame(filas_t),
@@ -2236,20 +2101,17 @@ def pagina_todos() -> None:
         st.markdown(barra_canales(list(entregas.items()), None, num), unsafe_allow_html=True)
 
         st.markdown("#### Cada canal")
-        cols = st.columns(len(CANALES))
-        for col, c in zip(cols, CANALES):
-            with col:
-                if c == "correo" and e_c is not None:
-                    st.markdown(f'<div class="semaforo">{tarjeta_correo(dict(e_c, titulo="Correo"), "Adquiridos" if not unidad_sel else "Asignados")}</div>',
-                                unsafe_allow_html=True)
-                    st.button("Ver Correo", key="ir_canal_correo", on_click=ir_a_canal, args=("correo",),
-                              icon=":material/arrow_forward:", width="stretch")
-                elif c in CANALES_CONECTADOS:
-                    tarjeta(dict(e_w, titulo=NOMBRE_CANAL[c]))
-                    st.button(f"Ver {NOMBRE_CANAL[c]}", key=f"ir_canal_{c}", on_click=ir_a_canal, args=(c,),
-                              icon=":material/arrow_forward:", width="stretch")
-                else:
-                    st.markdown(f'<div class="semaforo">{tarjeta_pendiente(c)}</div>', unsafe_allow_html=True)
+        htmls_c, botones_c = [], []
+        for c in CANALES:
+            if c == "correo" and e_c is not None:
+                htmls_c.append(tarjeta_correo(dict(e_c, titulo="Correo"), "Adquiridos" if not unidad_sel else "Asignados"))
+            elif c in CANALES_CONECTADOS:
+                htmls_c.append(tarjeta_html(dict(e_w, titulo=NOMBRE_CANAL[c])))
+            else:
+                htmls_c.append(tarjeta_pendiente(c))
+            botones_c.append(dict(label=f"Ver {NOMBRE_CANAL[c]}", key=f"ir_canal_{c}", on_click=ir_a_canal, args=(c,),
+                                  icon=":material/arrow_forward:"))
+        fila_tarjetas("canales", htmls_c, botones_c)
 
         if not periodo.empty:
             semanal = periodo.assign(usd=periodo["creditos"] * periodo["linea"].map(PRECIO_LINEA).astype(float) / 1000)
@@ -2319,275 +2181,81 @@ def pagina_todos() -> None:
                 st.rerun()
             st.caption("En WhatsApp, si una compra se pagó a otro precio, se escribe en su fila en WhatsApp → Créditos.")
             seccion_unidades_y_journeys()
+            seccion_enlaces()
+            seccion_estado_sistema()
 
 
 # ---------------------------------------------------------------------------
-# Correo
+# Correo (en canal_correo.py)
 # ---------------------------------------------------------------------------
 
-CFG_CORREO = L.config_correo(config)
-NOMBRE_DESTINO_CORREO = {**NOMBRE_UNIDAD_APP, L.NINGUNA_UNIDAD: "Ninguna unidad (solo en el total)",
-                         L.SIN_ASIGNAR: "Sin asignar"}
-COLOR_DESTINO_CORREO = {**{NOMBRE_UNIDAD_APP[u]: c for u, c in COLOR_UNIDAD.items()},
-                        "Ninguna unidad (solo en el total)": TEMA["texto_ter"], "Sin asignar": TEMA["borde_fuerte"]}
+import canal_correo as CC  # noqa: E402
+
+_correo = CC.preparar(globals())
+estado_correo, tarjeta_correo, usd_correo = _correo.estado_correo, _correo.tarjeta_correo, _correo.usd_correo
+correo_en_periodo, pagina_correo = _correo.correo_en_periodo, _correo.pagina_correo
+ESTIMADO_CORREO = _correo.ESTIMADO_CORREO
 
 
-def precio_correo() -> float | None:
-    """Precio por 1.000 créditos de correo: promedio de las compras (si alguna trae su precio) o el del canal."""
-    total, valor = 0.0, 0.0
-    for c in CFG_CORREO["compras"]:
-        cred = float(c.get("creditos") or 0)
-        p = c.get("precio_usd_1000") or PRECIOS.get("correo")
-        if p:
-            total += cred
-            valor += cred * float(p)
-    return valor / total if total else PRECIOS.get("correo")
+def seccion_enlaces() -> None:
+    st.markdown("### Enlaces útiles")
+    nota("Accesos rápidos que todos ven en la barra lateral (por ejemplo, las tablas de tarifas de Salesforce). "
+         "Agrega una fila al final o borra las que sobren.")
+    base_e = pd.DataFrame(L.enlaces(config) or [{"titulo": "", "url": "", "descripcion": ""}])
+    editados = st.data_editor(base_e, key="editor_enlaces", num_rows="dynamic", hide_index=True, width="stretch",
+                              column_config={"titulo": st.column_config.TextColumn("Título", width="medium"),
+                                             "url": st.column_config.LinkColumn("Dirección (https://...)", width="large"),
+                                             "descripcion": st.column_config.TextColumn("Descripción", width="large")})
+    if st.button("Guardar enlaces", icon=":material/save:"):
+        lista_e = [{"titulo": str(r["titulo"]).strip(), "url": str(r["url"]).strip(),
+                    "descripcion": str(r["descripcion"] or "").strip()}
+                   for _, r in editados.iterrows() if str(r["titulo"] or "").strip() and str(r["url"] or "").startswith("http")]
+        L.guardar_enlaces(RUTA_CONFIG, config, lista_e)
+        subir_y_registrar("Guarda enlaces útiles", f"{len(lista_e)} enlaces", RUTA_CONFIG)
+        st.session_state.pop("editor_enlaces", None)
+        st.cache_data.clear()
+        st.toast("Enlaces guardados", icon=":material/check:")
+        st.rerun()
 
 
-def usd_correo(creditos: float) -> float | None:
-    p = precio_correo()
-    return None if p is None else creditos * p / 1000
-
-
-ESTIMADO_CORREO = "" if PRECIOS_OK.get("correo") else " (estimado)"
-
-
-def corte_correo() -> pd.Timestamp | None:
-    g = info_correo.get("generado")
-    return pd.Timestamp(g).tz_localize(None) if g is not None and pd.notna(g) else None
-
-
-def correo_en_periodo(datos: pd.DataFrame) -> pd.DataFrame:
-    """Con fecha de envío se filtra por el periodo consultado; sin ella, es todo el acumulado del reporte."""
-    if info_correo.get("con_fecha"):
-        return datos[(datos["fecha"] >= inicio) & (datos["fecha"] <= fin)]
-    return datos
-
-
-def estado_correo(unidad: str | None = None) -> dict:
-    datos = correo if unidad is None else correo[correo["unidad"] == unidad]
-    if info_correo.get("con_fecha"):
-        datos = datos[datos["fecha"] <= fin]
-    usado = float(datos["creditos"].sum())
-    if unidad is None:
-        hasta = fin if info_correo.get("con_fecha") else pd.Timestamp(date.today())
-        disponible = sum(float(c.get("creditos") or 0) for c in CFG_CORREO["compras"]
-                         if not c.get("fecha") or pd.Timestamp(c["fecha"]) <= hasta)
-    else:
-        disponible = float(CFG_CORREO["unidades"].get(unidad, 0))
-    uso = usado / disponible if disponible > 0 else None
-    estado = L.estado_consumo(uso * 100 if uso is not None else None, amarillo_pct, rojo_pct)
-    return {"titulo": "Correo (total)" if unidad is None else punto_unidad(unidad) + NOMBRE_UNIDAD_APP[unidad],
-            "usado": usado, "disponible": disponible, "restan": disponible - usado, "uso": uso, "estado": estado,
-            "envios": float(datos["envios"].sum()), "usd": usd_correo(usado),
-            "usd_disponible": usd_correo(disponible) if disponible else None}
-
-
-def tarjeta_correo(e: dict, etiqueta_disponible: str) -> str:
-    hay = e["disponible"] > 0
-    agot = ("Requiere la fecha de envío en el reporte" if not info_correo.get("con_fecha") else "Ver Proyección")
-    cifras = [
-        ("Usados", num(e["usado"])
-         + (f'<div class="cifra-sub">≈ {txt_usd(e["usd"])}{ESTIMADO_CORREO}</div>' if e.get("usd") is not None else "")),
-        (etiqueta_disponible, num(e["disponible"]) if hay else "Sin definir"),
-        ("Excedido" if e["restan"] < 0 else "Disponibles", num(abs(e["restan"])) if hay else "-"),
-        ("Agotamiento estimado", f'<span class="cifra-sub">{agot}</span>'),
+def seccion_estado_sistema() -> None:
+    """Revisión rápida de que todo esté conectado: correo, almacenamiento, reportes y tarifas."""
+    import acceso as A_
+    import correo_app
+    st.markdown("### Estado del sistema")
+    nota("Para revisar de un vistazo que todo esté conectado. Lo que esté en rojo necesita atención.")
+    metodo = correo_app.metodo()
+    vence_t = almacen.vencimiento_token()
+    problemas_r = L.validar_reportes(CARPETA)
+    pend = L.remitentes_pendientes(correo) if correo is not None else pd.DataFrame()
+    dias_c = (date.today() - pd.Timestamp(info_correo["generado"]).date()).days if info_correo.get("generado") else None
+    filas = [
+        ("Envío de correos (códigos y avisos)", bool(metodo),
+         {"smtp": "Por SMTP (Secrets)", "outlook": "Por Outlook de este computador"}.get(metodo, "Sin configurar: no se pueden crear cuentas")),
+        ("Dónde se guardan usuarios y bitácora", True,
+         "GitHub (rama datos-acceso)" if almacen.usa_github() else "Carpeta local"),
+        *([("Token de GitHub", (vence_t - pd.Timestamp.now()).days > 15 if vence_t is not None else True,
+            f"Vence el {vence_t:%d/%m/%Y}" if vence_t is not None else "Sin fecha de vencimiento conocida")]
+          if almacen.usa_github() else []),
+        ("Revisión de los reportes", not problemas_r, "Sin problemas" if not problemas_r else " · ".join(problemas_r)),
+        ("Clave fija para «Recordarme»", A_.tiene_clave_sesion_fija() or not S.en_la_nube(),
+         "En los Secrets" if A_.tiene_clave_sesion_fija() else ("Archivo local" if not S.en_la_nube() else "Falta en los Secrets")),
+        ("Personas del Equipo CRM (acceso.json)", bool(A_.leer_acceso()["equipo_crm"]),
+         f"{len(A_.leer_acceso()['equipo_crm'])} correos"),
+        ("Reporte de WhatsApp (data.xlsx)", dias_desde <= 7, f"Datos al {fecha_max:%d/%m/%Y} ({frescura})"),
+        ("Reporte de correo (data_correo.xlsx)", correo is not None and (dias_c is None or dias_c <= 7),
+         "No está" if correo is None else (f"Reporte del {pd.Timestamp(info_correo['generado']):%d/%m/%Y}"
+                                           + ("" if info_correo.get("con_fecha") else " · sin fecha de envío"))),
+        ("Remitentes de correo sin unidad", pend.empty, "Ninguno" if pend.empty else f"{len(pend)} por asignar"),
+        ("Tablas de tarifas de WhatsApp", True, texto_tarifas),
+        ("Precios por 1.000 créditos", all(PRECIOS_OK.get(c) for c in CANALES),
+         " · ".join(f"{NOMBRE_CANAL[c]} {txt_precio(PRECIOS.get(c))}" for c in CANALES)),
     ]
-    return tarjeta_semaforo(e["titulo"], e["estado"], e["uso"], cifras, amarillo_pct, rojo_pct, "usado")
-
-
-def aviso_remitentes_pendientes() -> None:
-    pend = L.remitentes_pendientes(correo)
-    if pend.empty or not CTX["admin"]:
-        return
-    lista_r = ", ".join(f"{r.remitente} ({num(r.envios)})" for r in pend.head(6).itertuples())
-    mas = f" y {len(pend) - 6} más" if len(pend) > 6 else ""
-    st.warning(f"**Hay {len(pend)} {'remitente' if len(pend) == 1 else 'remitentes'} de correo sin unidad** "
-               f"({num(pend['envios'].sum())} correos): {lista_r}{mas}. Indica de qué unidad es cada uno, o si no "
-               "es de ninguna, en Correo → Remitentes. Mientras tanto solo cuentan en el total.",
-               icon=":material/person_search:")
-
-
-def pagina_correo() -> None:
-    ambito = correo if not unidad_sel else correo[correo["unidad"] == unidad_sel]
-    periodo_c = correo_en_periodo(ambito)
-    corte = corte_correo()
-    con_fecha = info_correo.get("con_fecha")
-
-    with tabs_correo["Resumen"]:
-        rango = info_correo.get("rango")
-        if not con_fecha:
-            st.info(
-                "El reporte de correo trae el **total enviado por journey, sin fecha de envío**"
-                + (f" (reporte del {corte:%d/%m/%Y})" if corte is not None else "")
-                + ". Por eso aquí todo es acumulado, el «Periodo a consultar» no aplica y no hay gráficas por semana "
-                  "ni fecha de agotamiento. Cuando el reporte traiga la columna **Send Date**, se activan solas.",
-                icon=":material/event_busy:")
-        aviso_remitentes_pendientes()
-        st.markdown(
-            f'<div class="leyenda"><span class="leyenda-titulo">Estado de los créditos de correo · {nombre_ambito}</span>'
-            f'<span>{insignia("verde")} menos de {amarillo_pct:g} %</span>'
-            f'<span>{insignia("amarillo")} desde {amarillo_pct:g} %</span>'
-            f'<span>{insignia("rojo")} desde {rojo_pct:g} %</span>'
-            f'<span class="leyenda-nota">1 crédito por correo enviado'
-            + (f'; envíos del {rango[0]:%d/%m/%Y} al {corte:%d/%m/%Y}' if rango and corte is not None else "")
-            + '</span></div>', unsafe_allow_html=True)
-        if unidad_sel:
-            tarjetas = [tarjeta_correo(estado_correo(unidad_sel), "Asignados")]
-        else:
-            tarjetas = [tarjeta_correo(estado_correo(), "Adquiridos")] + [
-                tarjeta_correo(estado_correo(u), "Asignados") for u in L.UNIDADES]
-        st.markdown(f'<div class="semaforo">{"".join(tarjetas)}</div>', unsafe_allow_html=True)
-
-        st.markdown("### Envíos" + (f" del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}" if con_fecha else " acumulados"))
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Correos enviados", num(periodo_c["envios"].sum()))
-        c2.metric("Gasto" + ESTIMADO_CORREO, txt_usd(usd_correo(float(periodo_c["creditos"].sum()))),
-                  help=f"Créditos × {txt_precio(precio_correo())} USD por 1.000 créditos.")
-        c3.metric("Journeys", num(periodo_c["journey"].nunique()))
-        c4.metric("Remitentes", num(periodo_c["remitente"].nunique()))
-
-        if periodo_c.empty:
-            st.info("Sin envíos de correo en el periodo.", icon=":material/info:")
-            return
-        if con_fecha:
-            semanal = periodo_c.assign(semana_inicio=periodo_c["fecha"] - pd.to_timedelta(periodo_c["fecha"].dt.weekday, unit="D"))
-            tabla_s = semanal.groupby("semana_inicio", as_index=False)["envios"].sum().sort_values("semana_inicio")
-            tabla_s["semana"] = tabla_s["semana_inicio"].apply(etiqueta_semana)
-            st.markdown("### Correos por semana")
-            grafica_barras(tabla_s, "semana", "envios", orden=list(tabla_s["semana"]), titulo_valor="Correos",
-                           color=COLOR_CANAL["correo"])
-        if not unidad_sel:
-            st.markdown("### Gasto por unidad (USD)")
-            por_u = periodo_c.groupby("unidad", as_index=False)["creditos"].sum()
-            por_u["unidad"] = por_u["unidad"].map(NOMBRE_DESTINO_CORREO)
-            por_u["usd"] = por_u["creditos"].apply(lambda v: usd_correo(v) or 0.0)
-            total_u = float(por_u["usd"].sum()) or 1.0
-            nota(f"Créditos de correo por el precio de 1.000 créditos{ESTIMADO_CORREO}. Total: {txt_usd(total_u)}.")
-            grafica_barras(por_u, "unidad", "usd", horizontal=True, titulo_valor="USD", colores=COLOR_DESTINO_CORREO,
-                           formato=lambda v: f"{txt_usd(v)} · " + pct(float(v) / total_u, 0))
-        st.markdown("### Correos por remitente")
-        por_r = periodo_c.groupby("remitente", as_index=False)["envios"].sum()
-        grafica_barras(por_r, "remitente", "envios", horizontal=True, titulo_valor="Correos",
-                       color=COLOR_CANAL["correo"])
-        st.markdown("### Journeys con más correos")
-        por_j = periodo_c.groupby("journey", as_index=False)["envios"].sum().nlargest(15, "envios")
-        grafica_barras(por_j, "journey", "envios", horizontal=True, titulo_valor="Correos", color=COLOR_CANAL["correo"])
-
-    if "Remitentes" in tabs_correo:
-        with tabs_correo["Remitentes"]:
-            st.markdown("### ¿De qué unidad es cada remitente?")
-            nota("Cada correo se asigna a una unidad según su remitente (Email Sender Name). Elige la unidad de cada "
-                 "uno, o «Ninguna unidad» si no es de un área que manejemos: en ese caso solo cuenta en el total. "
-                 "Si aparece un remitente nuevo en el reporte, queda «Sin asignar» y el tablero avisa hasta que se asigne. "
-                 "Para tener una unidad nueva, créala primero en Todos los canales → Configuración.")
-            por_rem = (correo.groupby("remitente").agg(envios=("envios", "sum"), journeys=("journey", "nunique"))
-                       .reset_index())
-            opciones = [NOMBRE_DESTINO_CORREO[u] for u in L.UNIDADES] + [
-                NOMBRE_DESTINO_CORREO[L.NINGUNA_UNIDAD], NOMBRE_DESTINO_CORREO[L.SIN_ASIGNAR]]
-            actual = CFG_CORREO["remitentes"]
-            por_rem["Unidad"] = por_rem["remitente"].map(
-                lambda r: NOMBRE_DESTINO_CORREO.get(actual.get(r) if actual.get(r) in NOMBRE_DESTINO_CORREO else L.SIN_ASIGNAR))
-            por_rem["_orden"] = (por_rem["Unidad"] != NOMBRE_DESTINO_CORREO[L.SIN_ASIGNAR]).astype(int)
-            por_rem = por_rem.sort_values(["_orden", "envios"], ascending=[True, False]).drop(columns="_orden")
-            editado = st.data_editor(
-                por_rem.rename(columns={"remitente": "Remitente", "envios": "Correos", "journeys": "Journeys"}),
-                key="editor_remitentes", hide_index=True, width="stretch", disabled=["Remitente", "Correos", "Journeys"],
-                column_config={
-                    "Correos": st.column_config.NumberColumn("Correos enviados", format="localized"),
-                    "Unidad": st.column_config.SelectboxColumn("Unidad", options=opciones, required=True, width="medium"),
-                })
-            pendientes = int((editado["Unidad"] == NOMBRE_DESTINO_CORREO[L.SIN_ASIGNAR]).sum())
-            if pendientes:
-                st.caption(f"{pendientes} {'remitente sigue' if pendientes == 1 else 'remitentes siguen'} sin asignar.")
-            if st.button("Guardar remitentes", type="primary", icon=":material/save:"):
-                por_nombre = {v: k for k, v in NOMBRE_DESTINO_CORREO.items()}
-                nuevos = dict(actual)
-                cambios = []
-                for _, r in editado.iterrows():
-                    destino = por_nombre.get(r["Unidad"], L.SIN_ASIGNAR)
-                    if destino == L.SIN_ASIGNAR:
-                        nuevos.pop(r["Remitente"], None)
-                    else:
-                        nuevos[r["Remitente"]] = destino
-                    if actual.get(r["Remitente"]) != nuevos.get(r["Remitente"]):
-                        cambios.append(f"{r['Remitente']} → {r['Unidad']}")
-                L.guardar_correo(RUTA_CONFIG, config, remitentes=nuevos)
-                subir_y_registrar("Asigna remitentes de correo", "; ".join(cambios) or "sin cambios", RUTA_CONFIG)
-                st.session_state.pop("editor_remitentes", None)
-                st.cache_data.clear()
-                st.toast("Remitentes guardados", icon=":material/check:")
-                st.rerun()
-
-    with tabs_correo["Journeys"]:
-        st.markdown("### Journeys de correo")
-        nota("Correos enviados por cada journey y contenido, con su remitente y su unidad"
-             + ("" if con_fecha else ", acumulado del reporte") + ".")
-        buscar = st.text_input("Buscar journey, contenido o remitente", key="buscar_correo")
-        vista = periodo_c.copy()
-        if buscar:
-            b = buscar.lower()
-            vista = vista[vista[["journey", "contenido", "remitente"]].apply(
-                lambda f: b in " ".join(f.astype(str)).lower(), axis=1)]
-        vista = vista.assign(Unidad=vista["unidad"].map(NOMBRE_DESTINO_CORREO),
-                             USD=vista["creditos"].apply(lambda v: usd_correo(v) or 0.0),
-                             Prueba=vista["prueba"].map({True: "Sí", False: ""}))
-        columnas = ["journey", "contenido", "remitente", "Unidad", "envios", "USD", "Prueba"]
-        st.dataframe(vista.sort_values("envios", ascending=False)[columnas], hide_index=True, width="stretch",
-                     height=520, column_config={
-                         "journey": st.column_config.TextColumn("Journey", width="medium"),
-                         "contenido": st.column_config.TextColumn("Contenido", width="medium"),
-                         "remitente": st.column_config.TextColumn("Remitente"),
-                         "envios": st.column_config.NumberColumn("Correos (= créditos)", format="localized"),
-                         "USD": st.column_config.NumberColumn("USD" + ESTIMADO_CORREO, format="%.2f")})
-        st.caption(f"{num(len(vista))} filas · {num(vista['envios'].sum())} correos. Un journey puede aparecer "
-                   "varias veces, una por cada contenido que envió.")
-
-    if "Créditos" in tabs_correo:
-        with tabs_correo["Créditos"]:
-            st.markdown("### Créditos de correo adquiridos")
-            nota("Compras de créditos de correo. Un correo estándar gasta 1 crédito, sin importar el país "
-                 "(Salesforce Message Credits: Email Standard = 1). Si una compra tuvo otro precio, escríbelo en su fila.")
-            compras_c = pd.DataFrame([{"Fecha": pd.to_datetime(c.get("fecha"), errors="coerce"),
-                                       "Créditos": float(c.get("creditos") or 0),
-                                       COL_PRECIO: c.get("precio_usd_1000"), "Nota": c.get("nota", "")}
-                                      for c in CFG_CORREO["compras"]] or
-                                     [{"Fecha": pd.NaT, "Créditos": 0.0, COL_PRECIO: None, "Nota": ""}])
-            compras_ed = st.data_editor(
-                compras_c, key="editor_compras_correo", num_rows="dynamic", hide_index=True, width="stretch",
-                column_config={"Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
-                               "Créditos": st.column_config.NumberColumn("Créditos", min_value=0, format="localized"),
-                               COL_PRECIO: st.column_config.NumberColumn(COL_PRECIO, min_value=0.0, format="%.3f"),
-                               "Nota": st.column_config.TextColumn("Nota", width="large")})
-            adquiridos = float(compras_ed["Créditos"].fillna(0).sum())
-            st.markdown("### Asignación a unidades")
-            nota("Cuántos créditos de correo le corresponden a cada unidad. Es la base del estado de cada unidad.")
-            asig = pd.DataFrame([{"clave": u, "Unidad": NOMBRE_UNIDAD_APP[u],
-                                  "Asignados": CFG_CORREO["unidades"].get(u, 0.0)} for u in L.UNIDADES])
-            asig_ed = st.data_editor(asig, key="editor_asig_correo", hide_index=True, width="stretch",
-                                     disabled=["Unidad"], column_order=["Unidad", "Asignados"],
-                                     column_config={"Asignados": st.column_config.NumberColumn(
-                                         "Créditos asignados", min_value=0, format="localized")})
-            libre = adquiridos - float(asig_ed["Asignados"].fillna(0).sum())
-            if libre < 0:
-                st.error(f"Se asignaron {num(-libre)} créditos más de los adquiridos.", icon=":material/error:")
-            else:
-                st.caption(f"Adquiridos {num(adquiridos)} · sin asignar a unidades {num(libre)} "
-                           "(lo usan los remitentes de «Ninguna unidad» o queda de reserva).")
-            if st.button("Guardar créditos de correo", type="primary", icon=":material/save:"):
-                compras_g = [{"fecha": f"{pd.Timestamp(r['Fecha']):%Y-%m-%d}" if pd.notna(r["Fecha"]) else "",
-                              "creditos": float(r["Créditos"]), "nota": r["Nota"] or "",
-                              **({"precio_usd_1000": float(r[COL_PRECIO])} if pd.notna(r[COL_PRECIO]) and r[COL_PRECIO] else {})}
-                             for _, r in compras_ed.iterrows() if pd.notna(r["Créditos"]) and r["Créditos"] > 0]
-                unidades_g = {r["clave"]: float(r["Asignados"] or 0) for _, r in asig_ed.iterrows()}
-                L.guardar_correo(RUTA_CONFIG, config, compras=compras_g, unidades=unidades_g)
-                subir_y_registrar("Guarda créditos de correo", f"Adquiridos {num(adquiridos)}; asignados " + ", ".join(
-                    f"{NOMBRE_UNIDAD_APP[u]} {num(v)}" for u, v in unidades_g.items()), RUTA_CONFIG)
-                for k in ("editor_compras_correo", "editor_asig_correo"):
-                    st.session_state.pop(k, None)
-                st.cache_data.clear()
-                st.toast("Créditos de correo guardados", icon=":material/check:")
-                st.rerun()
+    html_f = "".join(
+        f'<div class="dato-fila"><span><i class="{"punto-ok" if ok else "punto-alerta"}" style="margin-right:8px;'
+        f'{"" if ok else "background:var(--t-semaforo-rojo, #D1372C);"}"></i>{nombre}</span><b>{detalle}</b></div>'
+        for nombre, ok, detalle in filas)
+    st.markdown(f'<div class="panel-unidades">{html_f}</div>', unsafe_allow_html=True)
 
 
 def pagina_pendiente(c: str) -> None:
@@ -2613,6 +2281,44 @@ def pagina_pendiente(c: str) -> None:
         f"2. **Su tabla de tarifas** (multiplicadores de Salesforce Message Credits), con su fecha de vigencia.\n"
         "3. **Sus compras de créditos** y el **precio por 1.000 créditos** (Todos los canales → Configuración).")
 
+
+# ---------------------------------------------------------------------------
+# Desde tu última visita (arriba, debajo del título)
+# ---------------------------------------------------------------------------
+
+def foto_visita() -> dict:
+    """Cómo están los créditos ahora, para compararlo en la próxima visita de esta persona."""
+    alcance = list(L.UNIDADES) if CTX["admin"] else [u for u in L.UNIDADES if u in CTX["unidades"]]
+    estados_f, usado, disponible = {}, 0.0, 0.0
+    if CTX["admin"]:
+        e_t = estado_de("Ambas líneas", None)
+        estados_f["WhatsApp (total)"] = e_t["estado"]
+        usado, disponible = e_t["consumido"], e_t["disponible"]
+    for u in alcance:
+        e_u = estado_de("Ambas líneas", u)
+        estados_f[f"WhatsApp · {NOMBRE_UNIDAD_APP[u]}"] = e_u["estado"]
+        if not CTX["admin"]:
+            usado += e_u["consumido"]
+            disponible += e_u["disponible"]
+    foto = {"datos_w": f"{fecha_max:%d/%m/%Y}", "usado_w": usado, "uso_w": usado / disponible if disponible else None,
+            "estados": estados_f}
+    if correo is not None:
+        c_alc = correo if CTX["admin"] else correo[correo["unidad"].isin(alcance)]
+        foto["correos"] = float(c_alc["envios"].sum())
+        if CTX["admin"]:
+            foto["remitentes_pend"] = list(L.remitentes_pendientes(correo)["remitente"])
+    return foto
+
+
+if opcion_periodo == "Todo hasta la fecha":   # la foto se toma con el estado a hoy, no con un periodo pasado
+    with zona_novedades:
+        try:
+            N.mostrar(CTX, foto_visita())
+        except Exception as error:   # el resumen nunca debe tumbar el tablero
+            print(f"[novedades] {error}", file=sys.stderr)
+
+if st.session_state.pop("imprimir", False):
+    st.html("<script>setTimeout(function () { window.print(); }, 900);</script>", unsafe_allow_javascript=True)
 
 if canal == "todos":
     pagina_todos()

@@ -29,6 +29,7 @@ import requests
 CARPETA = Path(__file__).parent
 API = "https://api.github.com"
 FORZAR_LOCAL = False   # modo pruebas: todo se guarda en la carpeta local aunque haya token
+_VENCE = {"valor": None, "consultado": False}   # vencimiento del token (lo informa GitHub en cada respuesta)
 
 
 class ErrorAlmacen(RuntimeError):
@@ -81,6 +82,10 @@ def _leer_github(nombre: str, datos: bool) -> tuple[dict | None, str | None]:
     rama = _rama(datos)
     r = requests.get(f"{API}/repos/{s['repositorio']}/contents/{nombre}", headers=_cabeceras(),
                      params={"ref": rama}, timeout=20)
+    _anotar_vencimiento(r)
+    if r.status_code == 401:
+        raise ErrorAlmacen("GitHub rechazó el token (¿venció o se revocó?). El dueño del repositorio debe crear uno "
+                           "nuevo y ponerlo en los Secrets.")
     if r.status_code == 404:
         return None, None
     if r.status_code != 200:
@@ -168,3 +173,29 @@ def subir_archivo(ruta: Path, mensaje: str) -> None:
             raise ErrorAlmacen(f"GitHub respondió {r.status_code} al subir {nombre}.")
         time.sleep(0.6)
     raise ErrorAlmacen(f"No se pudo subir {nombre} a GitHub.")
+
+
+
+def _anotar_vencimiento(respuesta) -> None:
+    v = respuesta.headers.get("github-authentication-token-expiration")
+    if v:
+        _VENCE["valor"] = v
+
+
+def vencimiento_token():
+    """Fecha en que vence el token de GitHub (los tokens de grano fino vencen), o None si no se sabe o no vence."""
+    if not usa_github():
+        return None
+    if _VENCE["valor"] is None and not _VENCE["consultado"]:
+        _VENCE["consultado"] = True
+        try:
+            _anotar_vencimiento(requests.get(f"{API}/rate_limit", headers=_cabeceras(), timeout=15))
+        except Exception:
+            return None
+    if not _VENCE["valor"]:
+        return None
+    try:
+        import pandas as pd
+        return pd.Timestamp(_VENCE["valor"]).tz_convert(None) if pd.Timestamp(_VENCE["valor"]).tzinfo else pd.Timestamp(_VENCE["valor"])
+    except Exception:
+        return None

@@ -1,5 +1,5 @@
 """
-Actualiza data.xlsx con el último reporte que llega por correo.
+Actualiza data.xlsx (WhatsApp) y data_correo.xlsx (Correo) con el último reporte que llega por correo.
 
 Busca en el Outlook de escritorio el correo más reciente que cumpla los filtros de
 actualizar_datos.json (asunto, remitente, carpeta), toma el adjunto de Excel, revisa que
@@ -11,6 +11,9 @@ Uso (desde la carpeta del repositorio):
     py actualizar_datos.py              Busca y actualiza.
     py actualizar_datos.py --simular    Muestra qué haría, sin cambiar nada.
     py actualizar_datos.py --forzar     Reemplaza aunque el reporte no sea más nuevo.
+
+El reporte de correo se configura en la sección "correo" de actualizar_datos.json (sus propios filtros de
+asunto y adjunto; lo que no se escriba se toma de la configuración general). Se activa con "activo": true.
 
 Para que corra solo cada día: ejecutar_actualizacion.bat en el Programador de tareas de
 Windows (ver README).
@@ -36,6 +39,8 @@ import logica as L
 CARPETA = Path(__file__).parent
 RUTA_DATOS = CARPETA / "data.xlsx"
 RUTA_ANTERIOR = CARPETA / "data_anterior.xlsx"
+RUTA_CORREO = CARPETA / "data_correo.xlsx"
+RUTA_CORREO_ANTERIOR = CARPETA / "data_correo_anterior.xlsx"
 RUTA_CONFIG = CARPETA / "actualizar_datos.json"
 RUTA_LOG = CARPETA / "actualizar_datos.log"
 
@@ -48,6 +53,12 @@ CONFIG_POR_DEFECTO = {
     "dias_a_revisar": 7,            # solo se miran correos de los últimos N días
     "publicar_en_github": False,    # si es true, hace commit y push de data.xlsx
     "mensaje_commit": "Actualiza data.xlsx con el reporte del {fecha}",
+    "correo": {                     # reporte de correos enviados (Marketing Cloud Intelligence)
+        "activo": False,
+        "asunto_contiene": "",
+        "adjunto_contiene": "",
+        "mensaje_commit": "Actualiza data_correo.xlsx con el reporte del {fecha}",
+    },
 }
 
 log = logging.getLogger("actualizar_datos")
@@ -58,6 +69,14 @@ def leer_config() -> dict:
     if RUTA_CONFIG.exists():
         cfg.update(json.loads(RUTA_CONFIG.read_text(encoding="utf-8")))
     return cfg
+
+
+def config_correo(cfg: dict) -> dict:
+    """Filtros del reporte de correo: los propios y, si faltan, los generales."""
+    propios = {**CONFIG_POR_DEFECTO["correo"], **(cfg.get("correo") or {})}
+    base = {k: v for k, v in cfg.items() if k != "correo"}
+    base.update({k: v for k, v in propios.items() if v not in ("", None)})
+    return base
 
 
 def contiene(texto, buscado: str) -> bool:
@@ -207,13 +226,42 @@ def revisar_archivo(ruta: Path) -> tuple[bool, str, pd.Timestamp | None]:
     return True, f"{len(reporte)} filas", (None if pd.isna(f) else f)
 
 
-def publicar(cfg: dict, fecha_txt: str) -> None:
-    """git add + commit + push de data.xlsx, en la carpeta del repositorio."""
+def fecha_correo(ruta: Path) -> pd.Timestamp | None:
+    try:
+        _, info = L.leer_reporte_correo(ruta)
+    except Exception:
+        return None
+    g = info.get("generado")
+    return None if g is None or pd.isna(g) else pd.Timestamp(g).tz_localize(None)
+
+
+def revisar_correo(ruta: Path) -> tuple[bool, str, pd.Timestamp | None]:
+    """¿Es un reporte de correos enviados que el dashboard puede leer?"""
+    try:
+        envios, info = L.leer_reporte_correo(ruta)
+    except Exception as error:
+        return False, f"no es un reporte de correo válido ({error})", None
+    if envios.empty:
+        return False, "el reporte de correo no trae envíos", None
+    g = info.get("generado")
+    total = f"{int(envios['envios'].sum()):,}".replace(",", ".")
+    return True, f"{len(envios)} filas, {total} correos", (
+        None if g is None or pd.isna(g) else pd.Timestamp(g).tz_localize(None))
+
+
+REPORTES = {
+    "whatsapp": {"destino": RUTA_DATOS, "anterior": RUTA_ANTERIOR, "revisar": revisar_archivo, "fecha": fecha_generado},
+    "correo": {"destino": RUTA_CORREO, "anterior": RUTA_CORREO_ANTERIOR, "revisar": revisar_correo, "fecha": fecha_correo},
+}
+
+
+def publicar(cfg: dict, fecha_txt: str, archivos: tuple[str, ...] = ("data.xlsx",)) -> None:
+    """git add + commit + push de los reportes, en la carpeta del repositorio."""
     def git(*args):
         return subprocess.run(["git", *args], cwd=CARPETA, capture_output=True, text=True)
     if git("rev-parse", "--is-inside-work-tree").returncode != 0:
         raise RuntimeError("La carpeta no es un repositorio de git; no se puede publicar.")
-    git("add", "data.xlsx")
+    git("add", *archivos)
     commit = git("commit", "-m", cfg["mensaje_commit"].format(fecha=fecha_txt))
     if commit.returncode != 0 and "nothing to commit" not in (commit.stdout + commit.stderr):
         raise RuntimeError(f"git commit falló: {commit.stderr.strip() or commit.stdout.strip()}")
@@ -227,64 +275,85 @@ def publicar(cfg: dict, fecha_txt: str) -> None:
         raise RuntimeError(f"git push falló: {push.stderr.strip()}")
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Actualiza data.xlsx con el último reporte recibido por correo.")
-    parser.add_argument("--simular", action="store_true", help="Muestra qué haría, sin cambiar nada.")
-    parser.add_argument("--forzar", action="store_true", help="Reemplaza aunque el reporte no sea más nuevo.")
-    args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
-                        handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(RUTA_LOG, encoding="utf-8")])
-    cfg = leer_config()
-    if not (cfg["asunto_contiene"] or cfg["remitente_contiene"] or cfg["adjunto_contiene"]):
-        log.error("Configura al menos un filtro (asunto, remitente o adjunto) en actualizar_datos.json.")
-        return 2
+def actualizar(nombre: str, cfg: dict, args) -> tuple[int, str | None]:
+    """Busca el último reporte de un canal en Outlook y, si es válido y más nuevo, reemplaza el archivo.
+    Devuelve (código, fecha del reporte nuevo o None si no cambió)."""
+    r = REPORTES[nombre]
+    destino = r["destino"]
     try:
         bandeja = carpeta_outlook(cfg)
         items = bandeja.Items
         items.Sort("[ReceivedTime]", True)
         lista = candidatos(items, cfg, datetime.now())
     except Exception as error:
-        log.error("No se pudo leer el correo: %s", error)
-        return 1
+        log.error("[%s] No se pudo leer el correo: %s", nombre, error)
+        return 1, None
     if not lista:
-        log.info("No hay correos con el reporte en los últimos %s días.", cfg["dias_a_revisar"])
-        return 0
-
-    actual = fecha_generado(RUTA_DATOS)
+        log.info("[%s] No hay correos con el reporte en los últimos %s días.", nombre, cfg["dias_a_revisar"])
+        return 0, None
+    actual = r["fecha"](destino)
     with tempfile.TemporaryDirectory() as tmp:
         for recibido, correo in lista:
             for adjunto in adjuntos_excel(correo, cfg):
                 ruta_tmp = Path(tmp) / "nuevo.xlsx"
                 adjunto.SaveAsFile(str(ruta_tmp))
-                valido, detalle, generado = revisar_archivo(ruta_tmp)
+                valido, detalle, generado = r["revisar"](ruta_tmp)
                 origen = f"«{correo.Subject}» del {recibido:%d/%m/%Y %H:%M} ({adjunto.FileName})"
                 if not valido:
-                    log.warning("Se omite %s: %s.", origen, detalle)
+                    log.warning("[%s] Se omite %s: %s.", nombre, origen, detalle)
                     continue
-                if huella(ruta_tmp) == huella(RUTA_DATOS):
-                    log.info("data.xlsx ya es el reporte más reciente (%s). No hay cambios.", origen)
-                    return 0
+                if huella(ruta_tmp) == huella(destino):
+                    log.info("[%s] %s ya es el reporte más reciente (%s).", nombre, destino.name, origen)
+                    return 0, None
                 if not args.forzar and actual is not None and generado is not None and generado <= actual:
-                    log.info("El reporte del correo (%s) no es más nuevo que el actual (%s). No hay cambios.",
-                             generado, actual)
-                    return 0
+                    log.info("[%s] El reporte del correo (%s) no es más nuevo que el actual (%s).", nombre, generado, actual)
+                    return 0, None
                 if args.simular:
-                    log.info("SIMULACIÓN: se reemplazaría data.xlsx con %s, %s.", origen, detalle)
-                    return 0
-                if RUTA_DATOS.exists():
-                    shutil.copy2(RUTA_DATOS, RUTA_ANTERIOR)
-                shutil.copy2(ruta_tmp, RUTA_DATOS)
-                log.info("data.xlsx actualizado con %s, %s.", origen, detalle)
-                if cfg["publicar_en_github"]:
-                    try:
-                        publicar(cfg, f"{(generado or recibido):%d/%m/%Y}")
-                        log.info("data.xlsx publicado en GitHub: el dashboard se actualiza en unos minutos.")
-                    except Exception as error:
-                        log.error("Se actualizó data.xlsx en esta carpeta, pero no se pudo publicar: %s", error)
-                        return 1
-                return 0
-    log.warning("Ningún adjunto de los correos encontrados es un reporte válido.")
-    return 1
+                    log.info("[%s] SIMULACIÓN: se reemplazaría %s con %s, %s.", nombre, destino.name, origen, detalle)
+                    return 0, None
+                if destino.exists():
+                    shutil.copy2(destino, r["anterior"])
+                shutil.copy2(ruta_tmp, destino)
+                log.info("[%s] %s actualizado con %s, %s.", nombre, destino.name, origen, detalle)
+                return 0, f"{(generado or recibido):%d/%m/%Y}"
+    log.warning("[%s] Ningún adjunto de los correos encontrados es un reporte válido.", nombre)
+    return 1, None
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Actualiza los reportes con el último recibido por correo.")
+    parser.add_argument("--simular", action="store_true", help="Muestra qué haría, sin cambiar nada.")
+    parser.add_argument("--forzar", action="store_true", help="Reemplaza aunque el reporte no sea más nuevo.")
+    parser.add_argument("--solo", choices=list(REPORTES), help="Actualiza solo ese canal.")
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
+                        handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(RUTA_LOG, encoding="utf-8")])
+    cfg = leer_config()
+    trabajos = []
+    if args.solo in (None, "whatsapp"):
+        if cfg["asunto_contiene"] or cfg["remitente_contiene"] or cfg["adjunto_contiene"]:
+            trabajos.append(("whatsapp", cfg))
+        else:
+            log.error("Configura al menos un filtro (asunto, remitente o adjunto) en actualizar_datos.json.")
+            return 2
+    cfg_c = config_correo(cfg)
+    if args.solo in (None, "correo") and (cfg.get("correo") or {}).get("activo"):
+        trabajos.append(("correo", cfg_c))
+    codigo, publicados, fechas = 0, [], []
+    for nombre, cfg_r in trabajos:
+        c, fecha = actualizar(nombre, cfg_r, args)
+        codigo = max(codigo, c)
+        if fecha:
+            publicados.append(REPORTES[nombre]["destino"].name)
+            fechas.append(fecha)
+    if publicados and cfg["publicar_en_github"]:
+        try:
+            publicar(cfg, " y ".join(sorted(set(fechas))), tuple(publicados))
+            log.info("%s publicado en GitHub: el dashboard se actualiza en unos minutos.", ", ".join(publicados))
+        except Exception as error:
+            log.error("Se actualizó en esta carpeta, pero no se pudo publicar: %s", error)
+            return 1
+    return codigo
 
 
 if __name__ == "__main__":
