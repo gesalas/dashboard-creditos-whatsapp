@@ -98,6 +98,8 @@ Los valores van en **Settings → Secrets** de la app en Streamlit Cloud (o en `
 
 Antes de pasar el inicio de sesión a la rama publicada: poner los correos del Equipo CRM en `acceso.json`, llenar los Secrets y que cada persona del Equipo CRM cree su cuenta. Sin `[correo]` en el enlace publicado no se pueden enviar códigos: crear cuenta y recuperar contraseña quedan desactivados (el Equipo CRM puede crear cuentas con contraseña temporal).
 
+**Correos de acceso:** código para crear la cuenta, código para restablecer la contraseña, acceso aprobado, solicitud no aprobada, contraseña temporal, aviso de contraseña cambiada (seguridad) y aviso al Equipo CRM de una solicitud nueva. Usan la misma plantilla que los informes (firma con el logo de `assets/`, tablas sobrias y enlace de `alertas.json` → `plantilla`). Para verlos sin enviar nada: `py correo_app.py --vista-previa` (quedan en `vista_previa/`; con `--abrir` se abren en el navegador). En el modo pruebas se muestran dentro de la app.
+
 **Cómo se envían los códigos:** por SMTP si `[correo]` está en los Secrets; si no, en Windows, por el **Outlook de escritorio** del computador donde corre la app (el mismo de las alertas; el correo sale de esa cuenta de Outlook). En producción el código nunca se muestra en pantalla: si no hay cómo enviarlo, crear cuenta y recuperar contraseña quedan desactivados, porque mostrarlo permitiría registrarse con un correo ajeno. Si el envío falla, el código se anula.
 
 En local, sin Secrets, usuarios y bitácora se guardan en la carpeta del proyecto.
