@@ -30,7 +30,7 @@ En Windows, si `python` no se reconoce, usar `py` en su lugar (`py -m streamlit 
 | `config.json` | Compras de créditos con su línea (`compras`), asignación a unidades por línea (`ucp`, `outbound`; los totales y `general` se calculan solos), umbrales del semáforo (`semaforo`) y textos del encabezado (`marca`). Precios por canal (`precios_usd_1000`), unidades y journeys. Se edita desde WhatsApp → Créditos y Todos los canales → Configuración. | Cuando se compren créditos o cambie la asignación |
 | `acceso.json` | Dominio permitido para crear cuentas y lista de correos del **Equipo CRM** (administradores). | Cuando entre o salga alguien del Equipo CRM |
 | `usuarios.json`, `bitacora.json`, `perfiles.json` | Cuentas (contraseñas cifradas con bcrypt), registro de cambios, y foto y personalización de cada persona. Los crea la app; no se suben con git (ver Acceso). | Solos |
-| `personalizar.py` | Secciones del Resumen, colores de las unidades y la página Personalizar tablero. | Desarrollo |
+| `personalizar.py`, `temas.py` | La página Personalizar tablero (tema, colores, secciones) y los temas con sus colores. | Desarrollo |
 | `acceso.py`, `sesion.py`, `almacen.py`, `correo_app.py` | Cuentas y roles, pantallas de acceso, dónde se guardan los archivos y envío de correos de la app. | Desarrollo |
 | `logica.py` | Todos los cálculos. No depende de Streamlit. | Desarrollo |
 | `app.py` | La interfaz: filtros, pestañas y gráficas. | Desarrollo |
@@ -85,9 +85,9 @@ Para entrar hay que iniciar sesión. Quien encuentre el enlace sin una cuenta ap
 
 **Menú de perfil (arriba a la derecha):** botón con la foto y el nombre de la persona. Al abrirlo muestra su correo y rol, y lleva a Mi cuenta, Personalizar tablero, Usuarios y Bitácora (estas dos solo para el Equipo CRM; Usuarios muestra cuántas solicitudes hay por aprobar) y Cerrar sesión. Sin foto, se ven las iniciales.
 
-**Mi cuenta:** subir o quitar la foto de perfil (se recorta en cuadrado y se guarda pequeña, 160 px), cambiar la contraseña, pedir acceso a otra unidad y cerrar sesión en todos los equipos.
+**Mi cuenta:** subir o quitar la foto de perfil (se ve grande antes de guardarla; se recorta en cuadrado y se guarda pequeña, 256 px), cambiar la contraseña, pedir acceso a otra unidad y cerrar sesión en todos los equipos.
 
-**Personalizar tablero (cada persona el suyo):** se arrastran las secciones del Resumen para cambiar su orden o pasarlas a «Ocultas», y se elige el color de cada unidad (se usa en las gráficas que comparan unidades, en *Gasto por unidad* y en las tarjetas de Unidades). «Volver a lo predeterminado» deshace todo. Se guarda en `perfiles.json` junto con la foto (en el enlace publicado, en la rama `datos-acceso`, como los usuarios).
+**Personalizar tablero (cada persona el suyo):** se elige un **tema** (Institucional claro, Oscuro, Carbón, Otoño, Vino tinto o Alto contraste para accesibilidad) y, encima, el color principal y los de Marketing y Utility. Lo que se elige se ve de una vez como vista previa; «Guardar» lo conserva y «Descartar» vuelve a lo guardado. Solo se guardan los colores que cambian frente al tema, así que al cambiar de tema se conservan los que la persona eligió a propósito. Los temas están en `temas.py`. También se arrastran las secciones del Resumen para cambiar su orden o pasarlas a «Ocultas», y se elige el color de cada unidad (se usa en las gráficas que comparan unidades, en *Gasto por unidad* y en las tarjetas de Unidades). «Volver a lo predeterminado» deshace todo. Se guarda en `perfiles.json` junto con la foto (en el enlace publicado, en la rama `datos-acceso`, como los usuarios).
 
 **Bitácora (Equipo CRM):** quién hizo qué y cuándo: cuentas creadas, aprobaciones y rechazos, cambios de unidades de una cuenta, desactivaciones, contraseñas temporales, bloqueos, inicios de sesión y cambios de créditos, precios y unidades (con lo que cambió). Se puede buscar, filtrar y descargar en CSV.
 

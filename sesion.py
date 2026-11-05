@@ -526,12 +526,13 @@ def avatar_src(ctx: dict, perfil: dict | None = None) -> str:
 
 
 def preparar_foto(archivo) -> str:
-    """Recorta la imagen al centro en cuadrado, la reduce a 160 px y la devuelve como data URI (JPEG)."""
+    """Recorta la imagen al centro en cuadrado, la reduce a 256 px y la devuelve como data URI (JPEG)."""
+    archivo.seek(0)
     imagen = Image.open(archivo)
     imagen = ImageOps.exif_transpose(imagen).convert("RGB")
     lado = min(imagen.size)
     x, y = (imagen.width - lado) // 2, (imagen.height - lado) // 2
-    imagen = imagen.crop((x, y, x + lado, y + lado)).resize((160, 160), Image.LANCZOS)
+    imagen = imagen.crop((x, y, x + lado, y + lado)).resize((256, 256), Image.LANCZOS)
     salida = io.BytesIO()
     imagen.save(salida, format="JPEG", quality=86, optimize=True)
     return "data:image/jpeg;base64," + base64.b64encode(salida.getvalue()).decode("ascii")
@@ -542,25 +543,28 @@ CSS_MENU = """
 .st-key-menu-perfil {position: fixed; top: 0.55rem; right: 3.6rem; z-index: 999992; width: auto !important;}
 .st-key-menu-perfil [data-testid="stPopover"] > div > button,
 .st-key-menu-perfil [data-testid="stPopoverButton"] {
-  border-radius: 999px; padding: 3px 12px 3px 4px; min-height: 0; height: 42px; gap: 8px;
-  background: #FFFFFF; border: 1px solid #DDE2EA; box-shadow: 0 1px 2px rgba(16,24,40,.06);}
+  border-radius: 999px !important; padding: 3px 12px 3px 4px; min-height: 0; height: 42px; gap: 8px;
+  background: var(--t-superficie) !important; border: 1px solid var(--t-borde-fuerte) !important; box-shadow: var(--t-sombra);}
 .st-key-menu-perfil [data-testid="stPopover"] > div > button:hover,
-.st-key-menu-perfil [data-testid="stPopoverButton"]:hover {border-color: #1F3864;}
-.st-key-menu-perfil button p {font-size: 0.86rem; font-weight: 600; color: #1B1F24;}
+.st-key-menu-perfil [data-testid="stPopoverButton"]:hover {border-color: var(--t-primario) !important;}
+.st-key-menu-perfil button p {font-size: 0.86rem; font-weight: 600; color: var(--t-texto) !important;}
 .st-key-menu-perfil button::before {content: ""; width: 34px; height: 34px; border-radius: 50%;
   background: var(--avatar) center / cover no-repeat; flex: 0 0 34px;}
 .perfil-cabeza {display: flex; gap: 12px; align-items: center; padding: 2px 0 10px 0;
-  border-bottom: 1px solid #ECEFF4; margin-bottom: 6px;}
-.perfil-cabeza img {width: 52px; height: 52px; border-radius: 50%; object-fit: cover;}
-.perfil-nombre {font-weight: 650; font-size: 0.98rem; color: #1B1F24; line-height: 1.2;}
-.perfil-correo {font-size: 0.8rem; color: #5F6773;}
-.perfil-rol {display: inline-block; margin-top: 4px; font-size: 0.72rem; font-weight: 600; color: #1F3864;
-  background: #EEF3FA; border-radius: 999px; padding: 1px 8px;}
-.st-key-menu-opciones button {justify-content: flex-start !important; border: 0; padding-left: 8px; min-height: 2.3rem;}
+  border-bottom: 1px solid var(--t-linea); margin-bottom: 6px;}
+.perfil-cabeza img {width: 56px; height: 56px; border-radius: 50%; object-fit: cover;}
+.perfil-nombre {font-weight: 650; font-size: 0.98rem; color: var(--t-texto); line-height: 1.2;}
+.perfil-correo {font-size: 0.8rem; color: var(--t-texto-ter);}
+.perfil-rol {display: inline-block; margin-top: 4px; font-size: 0.72rem; font-weight: 600; color: var(--t-primario);
+  background: var(--t-primario-suave); border-radius: 999px; padding: 1px 8px;}
+.st-key-menu-opciones button {justify-content: flex-start !important; border: 0 !important; padding-left: 8px; min-height: 2.3rem;}
 .st-key-menu-opciones button > div, .st-key-menu-opciones button span {justify-content: flex-start !important;}
 .st-key-menu-opciones [data-testid="stVerticalBlock"] {gap: 0.15rem;}
-.st-key-menu-opciones button:hover {background: #F3F5F9;}
-.cuenta-foto img {width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 3px solid #EEF3FA;}
+.st-key-menu-opciones button:hover {background: var(--t-superficie2) !important;}
+.cuenta-foto {text-align: center;}
+.cuenta-foto img {width: 168px; height: 168px; border-radius: 50%; object-fit: cover;
+  border: 4px solid var(--t-primario-suave); box-shadow: var(--t-sombra);}
+.cuenta-foto-nota {font-size: 0.78rem; color: var(--t-texto-ter); margin-top: 8px;}
 </style>
 """
 
@@ -618,7 +622,7 @@ def pagina_actual(ctx: dict, nombres: dict[str, str], responsables: dict) -> boo
         pagina_cuenta(ctx, nombres, responsables)
     elif pagina == "personalizar":
         import personalizar
-        personalizar.pagina(ctx, nombres)
+        personalizar.pagina(ctx, nombres, ctx["tema"])
     elif pagina == "usuarios":
         pagina_usuarios(ctx, nombres)
     else:
@@ -627,27 +631,34 @@ def pagina_actual(ctx: dict, nombres: dict[str, str], responsables: dict) -> boo
 
 
 def seccion_foto(ctx: dict) -> None:
+    """Foto grande para ver bien cómo queda; al elegir un archivo se muestra cómo se verá antes de guardarla."""
     perfil = A.perfil(ctx["correo"])
     st.markdown("### Foto de perfil")
-    c1, c2 = st.columns([1, 3], vertical_alignment="center")
-    c1.markdown(f'<div class="cuenta-foto"><img src="{avatar_src(ctx, perfil)}" alt="Foto de perfil"></div>',
-                unsafe_allow_html=True)
+    n = st.session_state.setdefault("foto_perfil_n", 0)
+    archivo = st.session_state.get(f"foto_perfil_{n}")
+    previa, error = None, None
+    if archivo is not None:
+        try:
+            previa = preparar_foto(archivo)
+        except Exception:
+            error = "No se pudo leer la imagen. Prueba con otro archivo JPG o PNG."
+    c1, c2 = st.columns([1, 1.5], vertical_alignment="center", gap="medium")
+    nota_foto = ("Así se verá. Aún no está guardada." if previa else
+                 "Tu foto actual." if perfil.get("avatar") else "Sin foto: se muestran tus iniciales.")
+    c1.markdown(f'<div class="cuenta-foto"><img src="{previa or avatar_src(ctx, perfil)}" alt="Foto de perfil">'
+                f'<div class="cuenta-foto-nota">{nota_foto}</div></div>', unsafe_allow_html=True)
     with c2:
-        n = st.session_state.setdefault("foto_perfil_n", 0)
-        archivo = st.file_uploader("Sube una foto (JPG o PNG)", type=["jpg", "jpeg", "png"], key=f"foto_perfil_{n}",
-                                   help="Se recorta al centro en cuadrado y se guarda pequeña (160 px).")
+        st.file_uploader("Sube una foto (JPG o PNG)", type=["jpg", "jpeg", "png"], key=f"foto_perfil_{n}",
+                         help="Se recorta al centro en cuadrado. Una foto de frente, con la cara centrada, queda mejor.")
+        if error:
+            st.error(error)
         b1, b2 = st.columns(2)
-        if b1.button("Guardar foto", type="primary", disabled=archivo is None, width="stretch"):
-            try:
-                foto = preparar_foto(archivo)
-            except Exception:
-                st.error("No se pudo leer la imagen. Prueba con otro archivo JPG o PNG.")
-            else:
-                A.guardar_perfil(ctx["correo"], lambda p: p.update(avatar=foto), "Foto de perfil")
-                A.registrar("Cambia su foto de perfil", ctx["correo"])
-                st.session_state["foto_perfil_n"] = n + 1   # deja el selector de archivo vacío
-                st.toast("Foto guardada", icon=":material/check:")
-                st.rerun()
+        if b1.button("Guardar foto", type="primary", disabled=previa is None, width="stretch"):
+            A.guardar_perfil(ctx["correo"], lambda p: p.update(avatar=previa), "Foto de perfil")
+            A.registrar("Cambia su foto de perfil", ctx["correo"])
+            st.session_state["foto_perfil_n"] = n + 1   # deja el selector de archivo vacío
+            st.toast("Foto guardada", icon=":material/check:")
+            st.rerun()
         if b2.button("Quitar foto", disabled=not perfil.get("avatar"), width="stretch"):
             A.guardar_perfil(ctx["correo"], lambda p: p.pop("avatar", None), "Quita foto de perfil")
             st.rerun()
