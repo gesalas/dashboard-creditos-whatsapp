@@ -446,6 +446,9 @@ try:
 except Exception as error:   # un archivo de correo dañado no debe tumbar el tablero de WhatsApp
     correo_crudo, info_correo = None, {"error": str(error)}
 correo = L.preparar_correo(correo_crudo, config) if correo_crudo is not None else None
+_g_correo = (correo["fecha"].max() if info_correo.get("con_fecha") and correo is not None
+             else info_correo.get("generado"))
+corte_correo_txt = f"{pd.Timestamp(_g_correo):%d/%m/%Y}" if _g_correo is not None and pd.notna(_g_correo) else ""
 
 
 # ---------------------------------------------------------------------------
@@ -810,8 +813,8 @@ with st.sidebar:
             f'<div class="dato-fila"><span>Desde</span><b>{fecha_min:%d/%m/%Y}</b></div>'
             f'<div class="dato-fila"><span>Reporte</span><b>{generado_txt}</b></div>'
             f'<div class="dato-fila"><span>Tarifas</span><b>{texto_tarifas}</b></div>'
-            + (f'<div class="dato-fila"><span>Correo</span><b>reporte del {pd.Timestamp(info_correo["generado"]):%d/%m/%Y}</b></div>'
-               if info_correo.get("generado") is not None and pd.notna(info_correo.get("generado")) else
+            + (f'<div class="dato-fila"><span>Correo</span><b>datos al {corte_correo_txt}</b></div>'
+               if corte_correo_txt else
                ('<div class="dato-fila"><span>Correo</span><b>sin reporte</b></div>' if correo is None else "")),
             unsafe_allow_html=True)
         if st.button("Recargar datos", width="stretch", icon=":material/refresh:",
@@ -948,8 +951,6 @@ texto_ambito = f"{nombre_ambito} en {texto_linea}"
 # ---------------------------------------------------------------------------
 
 icono_html = imagen_html(RUTA_ICONO, "WhatsApp") if RUTA_ICONO else ICONO_CHAT
-_g_correo = info_correo.get("generado")
-corte_correo_txt = f"{pd.Timestamp(_g_correo):%d/%m/%Y}" if _g_correo is not None and pd.notna(_g_correo) else ""
 dias_desde = (date.today() - fecha_max).days
 frescura = ("hoy" if dias_desde <= 0 else "hace 1 día" if dias_desde == 1 else f"hace {dias_desde} días")
 clase_frescura = "frescura-alerta" if dias_desde > 7 else "frescura"
@@ -961,7 +962,7 @@ with zona_titulo:
         f'<div class="subtitulo">'
         + (f'<span class="{clase_frescura}">Datos de WhatsApp al {fecha_max:%d/%m/%Y} · {frescura}</span>'
            if canal != "correo" else "")
-        + (f'<span class="frescura">Correo: reporte del {corte_correo_txt}</span>'
+        + (f'<span class="frescura">Datos de correo al {corte_correo_txt}</span>'
            if canal in ("correo", "todos") and corte_correo_txt else "")
         + f'<span class="pastilla">{"Unidad " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else "Equipo CRM"}</span>'
         + (f'<span class="pastilla">Periodo: {inicio:%d/%m/%Y} – {fin:%d/%m/%Y}</span>'
@@ -2127,6 +2128,21 @@ def pagina_todos() -> None:
                         unsafe_allow_html=True)
             grafica_barras(tabla_e, "semana", "deliveries", orden=orden_e, titulo_valor="Entregas",
                            color=COLOR_CANAL["whatsapp"])
+            if info_correo.get("con_fecha") and correo is not None:
+                c_sem = correo_en_periodo(correo if not unidad_sel else correo[correo["unidad"] == unidad_sel])
+                if not c_sem.empty:
+                    c_sem = c_sem.assign(semana_inicio=c_sem["fecha"] - pd.to_timedelta(c_sem["fecha"].dt.weekday, unit="D"))
+                    t_c = c_sem.groupby("semana_inicio", as_index=False)[["envios", "creditos"]].sum().sort_values("semana_inicio")
+                    t_c["semana"] = t_c["semana_inicio"].apply(etiqueta_semana)
+                    t_c["usd"] = t_c["creditos"].apply(lambda v: usd_correo(v) or 0.0)
+                    st.markdown(f'<div class="titulo-tipo" style="border-color:{COLOR_CANAL["correo"]};">Correo · USD por semana</div>',
+                                unsafe_allow_html=True)
+                    grafica_barras(t_c, "semana", "usd", orden=list(t_c["semana"]), titulo_valor="USD",
+                                   color=COLOR_CANAL["correo"])
+                    st.markdown(f'<div class="titulo-tipo" style="border-color:{COLOR_CANAL["correo"]};">Correo · Correos por semana</div>',
+                                unsafe_allow_html=True)
+                    grafica_barras(t_c, "semana", "envios", orden=list(t_c["semana"]), titulo_valor="Correos",
+                                   color=COLOR_CANAL["correo"])
             st.caption("Correo no aparece por semana porque su reporte no trae fecha de envío; SMS aún no está conectado."
                        if not info_correo.get("con_fecha") else "SMS aún no está conectado.")
 
@@ -2194,6 +2210,7 @@ import canal_correo as CC  # noqa: E402
 _correo = CC.preparar(globals())
 estado_correo, tarjeta_correo, usd_correo = _correo.estado_correo, _correo.tarjeta_correo, _correo.usd_correo
 correo_en_periodo, pagina_correo = _correo.correo_en_periodo, _correo.pagina_correo
+inicio_correo, fin_correo, fecha_max_correo = _correo.inicio, _correo.fin, _correo.fecha_max
 ESTIMADO_CORREO = _correo.ESTIMADO_CORREO
 
 
@@ -2228,7 +2245,7 @@ def seccion_estado_sistema() -> None:
     vence_t = almacen.vencimiento_token()
     problemas_r = L.validar_reportes(CARPETA)
     pend = L.remitentes_pendientes(correo) if correo is not None else pd.DataFrame()
-    dias_c = (date.today() - pd.Timestamp(info_correo["generado"]).date()).days if info_correo.get("generado") else None
+    dias_c = (date.today() - pd.Timestamp(_g_correo).date()).days if corte_correo_txt else None
     filas = [
         ("Envío de correos (códigos y avisos)", bool(metodo),
          {"smtp": "Por SMTP (Secrets)", "outlook": "Por Outlook de este computador"}.get(metodo, "Sin configurar: no se pueden crear cuentas")),
@@ -2244,7 +2261,7 @@ def seccion_estado_sistema() -> None:
          f"{len(A_.leer_acceso()['equipo_crm'])} correos"),
         ("Reporte de WhatsApp (data.xlsx)", dias_desde <= 7, f"Datos al {fecha_max:%d/%m/%Y} ({frescura})"),
         ("Reporte de correo (data_correo.xlsx)", correo is not None and (dias_c is None or dias_c <= 7),
-         "No está" if correo is None else (f"Reporte del {pd.Timestamp(info_correo['generado']):%d/%m/%Y}"
+         "No está" if correo is None else (f"Datos al {corte_correo_txt}"
                                            + ("" if info_correo.get("con_fecha") else " · sin fecha de envío"))),
         ("Remitentes de correo sin unidad", pend.empty, "Ninguno" if pend.empty else f"{len(pend)} por asignar"),
         ("Tablas de tarifas de WhatsApp", True, texto_tarifas),

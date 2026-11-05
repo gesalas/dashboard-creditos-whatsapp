@@ -18,7 +18,8 @@ import streamlit as st
 import logica as L
 
 # Lo que este módulo toma de app.py (se llena en preparar)
-NECESITA = ("COLOR_CANAL", "COLOR_UNIDAD", "COL_PRECIO", "CTX", "NOMBRE_UNIDAD_APP", "PRECIOS", "PRECIOS_OK", "RUTA_CONFIG", "TEMA", "amarillo_pct", "config", "correo", "etiqueta_semana", "fila_tarjetas", "fin", "grafica_barras", "info_correo", "inicio", "insignia", "nombre_ambito", "nota", "num", "pct", "punto_unidad", "rojo_pct", "subir_y_registrar", "tabs_correo", "tarjeta_semaforo", "txt_precio", "txt_usd", "unidad_sel")
+NECESITA = ("COLOR_CANAL", "COLOR_UNIDAD", "COL_PRECIO", "CTX", "NOMBRE_UNIDAD_APP", "PRECIOS", "PRECIOS_OK", "RUTA_CONFIG", "TEMA", "amarillo_pct", "config", "correo", "etiqueta_semana", "fila_tarjetas", "fin", "grafica_barras", "info_correo", "inicio", "insignia", "nombre_ambito", "nota", "num", "pct", "punto_unidad", "rojo_pct", "subir_y_registrar", "tabs_correo", "tarjeta_semaforo", "txt_precio", "txt_usd", "unidad_sel", "resolver_periodo",
+            "opcion_periodo", "personalizado")
 COLOR_CANAL = None
 COLOR_UNIDAD = None
 COL_PRECIO = None
@@ -50,6 +51,10 @@ tarjeta_semaforo = None
 txt_precio = None
 txt_usd = None
 unidad_sel = None
+resolver_periodo = None
+opcion_periodo = None
+personalizado = None
+inicio_c = fin_c = fecha_max_c = None   # periodo del correo (con sus propias fechas)
 CFG_CORREO: dict = {}
 NOMBRE_DESTINO_CORREO: dict = {}
 COLOR_DESTINO_CORREO: dict = {}
@@ -73,11 +78,20 @@ def preparar(contexto: dict) -> SimpleNamespace:
                                  "Ninguna unidad (solo en el total)": g["TEMA"]["texto_ter"],
                                  "Sin asignar": g["TEMA"]["borde_fuerte"]}
     g["ESTIMADO_CORREO"] = "" if g["PRECIOS_OK"].get("correo") else " (estimado)"
+    # El periodo del correo se calcula con SUS fechas (su reporte puede llegar hasta otro día que el de WhatsApp)
+    c = g["correo"]
+    if g["info_correo"].get("con_fecha") and c is not None and c["fecha"].notna().any():
+        fmin, fmax = c["fecha"].min().date(), c["fecha"].max().date()
+        ini, fi, _ = g["resolver_periodo"](g["opcion_periodo"], fmin, fmax, g["personalizado"])
+        g["inicio_c"], g["fin_c"], g["fecha_max_c"] = pd.Timestamp(ini), pd.Timestamp(fi), pd.Timestamp(fmax)
+    else:
+        g["inicio_c"], g["fin_c"], g["fecha_max_c"] = g["inicio"], g["fin"], None
     propias = {n: f for n, f in globals().items()
                if isinstance(f, types.FunctionType) and f.__module__ == __name__ and n != "preparar"}
     for n, f in propias.items():
         g[n] = types.FunctionType(f.__code__, g, f.__name__, f.__defaults__, f.__closure__)
-    return SimpleNamespace(**{n: g[n] for n in propias}, ESTIMADO_CORREO=g["ESTIMADO_CORREO"])
+    return SimpleNamespace(**{n: g[n] for n in propias}, ESTIMADO_CORREO=g["ESTIMADO_CORREO"],
+                           inicio=g["inicio_c"], fin=g["fin_c"], fecha_max=g["fecha_max_c"])
 
 
 def precio_correo() -> float | None:
@@ -107,24 +121,39 @@ def corte_correo() -> pd.Timestamp | None:
 def correo_en_periodo(datos: pd.DataFrame) -> pd.DataFrame:
     """Con fecha de envío se filtra por el periodo consultado; sin ella, es todo el acumulado del reporte."""
     if info_correo.get("con_fecha"):
-        return datos[(datos["fecha"] >= inicio) & (datos["fecha"] <= fin)]
+        return datos[(datos["fecha"] >= inicio_c) & (datos["fecha"] <= fin_c)]
     return datos
+
+
+REF_DIAS = 28   # ritmo con el que se estima el agotamiento (igual que en WhatsApp)
 
 
 def estado_correo(unidad: str | None = None) -> dict:
     datos = correo if unidad is None else correo[correo["unidad"] == unidad]
+    agot, ritmo = None, None
     if info_correo.get("con_fecha"):
-        datos = datos[datos["fecha"] <= fin]
+        corte_e = min(fin_c, fecha_max_c)
+        datos = datos[datos["fecha"] <= corte_e]
+        recientes = datos[datos["fecha"] > corte_e - pd.Timedelta(days=REF_DIAS)]
+        ritmo = float(recientes["creditos"].sum()) / REF_DIAS
     usado = float(datos["creditos"].sum())
     if unidad is None:
-        hasta = fin if info_correo.get("con_fecha") else pd.Timestamp(date.today())
+        hasta = fin_c if info_correo.get("con_fecha") else pd.Timestamp(date.today())
         disponible = sum(float(c.get("creditos") or 0) for c in CFG_CORREO["compras"]
                          if not c.get("fecha") or pd.Timestamp(c["fecha"]) <= hasta)
     else:
         disponible = float(CFG_CORREO["unidades"].get(unidad, 0))
     uso = usado / disponible if disponible > 0 else None
     estado = L.estado_consumo(uso * 100 if uso is not None else None, amarillo_pct, rojo_pct)
-    return {"titulo": "Correo (total)" if unidad is None else punto_unidad(unidad) + NOMBRE_UNIDAD_APP[unidad],
+    if ritmo is not None and disponible > 0:
+        restan = disponible - usado
+        if restan <= 0:
+            agot = "Agotados"
+        elif ritmo <= 0:
+            agot = "Sin consumo reciente"
+        else:
+            agot = min(fin_c, fecha_max_c) + pd.Timedelta(days=min(int(restan / ritmo), 36500))
+    return {"agotamiento": agot, "ritmo": ritmo,"titulo": "Correo (total)" if unidad is None else punto_unidad(unidad) + NOMBRE_UNIDAD_APP[unidad],
             "usado": usado, "disponible": disponible, "restan": disponible - usado, "uso": uso, "estado": estado,
             "envios": float(datos["envios"].sum()), "usd": usd_correo(usado),
             "usd_disponible": usd_correo(disponible) if disponible else None}
@@ -132,13 +161,22 @@ def estado_correo(unidad: str | None = None) -> dict:
 
 def tarjeta_correo(e: dict, etiqueta_disponible: str) -> str:
     hay = e["disponible"] > 0
-    agot = ("Requiere la fecha de envío en el reporte" if not info_correo.get("con_fecha") else "Ver Proyección")
+    a = e.get("agotamiento")
+    if not info_correo.get("con_fecha"):
+        agot = '<span class="cifra-sub">Requiere la fecha de envío en el reporte</span>'
+    elif isinstance(a, pd.Timestamp):
+        agot = (f'{a:%d/%m/%Y}<div class="cifra-sub cifra-reserva">al ritmo de {num(e["ritmo"] * 7)} correos por semana</div>'
+                if a.year < 2100 else 'Más de 70 años<div class="cifra-sub cifra-reserva">&nbsp;</div>')
+    elif a:
+        agot = f'{a}<div class="cifra-sub cifra-reserva">&nbsp;</div>'
+    else:
+        agot = '<span class="cifra-sub">Sin créditos definidos</span>'
     cifras = [
         ("Usados", num(e["usado"])
          + (f'<div class="cifra-sub">≈ {txt_usd(e["usd"])}{ESTIMADO_CORREO}</div>' if e.get("usd") is not None else "")),
         (etiqueta_disponible, num(e["disponible"]) if hay else "Sin definir"),
         ("Excedido" if e["restan"] < 0 else "Disponibles", num(abs(e["restan"])) if hay else "-"),
-        ("Agotamiento estimado", f'<span class="cifra-sub">{agot}</span>'),
+        ("Agotamiento estimado", agot),
     ]
     return tarjeta_semaforo(e["titulo"], e["estado"], e["uso"], cifras, amarillo_pct, rojo_pct, "usado")
 
@@ -177,7 +215,8 @@ def pagina_correo() -> None:
             f'<span>{insignia("amarillo")} desde {amarillo_pct:g} %</span>'
             f'<span>{insignia("rojo")} desde {rojo_pct:g} %</span>'
             f'<span class="leyenda-nota">1 crédito por correo enviado'
-            + (f'; envíos del {rango[0]:%d/%m/%Y} al {corte:%d/%m/%Y}' if rango and corte is not None else "")
+            + (f'; estado al {min(fin_c, fecha_max_c):%d/%m/%Y}, agotamiento con el ritmo de los últimos {REF_DIAS} días'
+               if con_fecha else (f'; envíos del {rango[0]:%d/%m/%Y} al {corte:%d/%m/%Y}' if rango and corte is not None else ""))
             + '</span></div>', unsafe_allow_html=True)
         if unidad_sel:
             tarjetas = [tarjeta_correo(estado_correo(unidad_sel), "Asignados")]
@@ -188,7 +227,10 @@ def pagina_correo() -> None:
         for i in range(0, len(tarjetas), por_fila):
             fila_tarjetas(f"correo-{i}", tarjetas[i:i + por_fila])
 
-        st.markdown("### Envíos" + (f" del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}" if con_fecha else " acumulados"))
+        st.markdown("### Envíos" + (f" del {inicio_c:%d/%m/%Y} al {fin_c:%d/%m/%Y}" if con_fecha else " acumulados"))
+        if con_fecha and fin_c > fecha_max_c:
+            st.caption(f"Los datos de correo llegan hasta el {fecha_max_c:%d/%m/%Y}; después de esa fecha no hay envíos "
+                       "reales todavía.")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Correos enviados", num(periodo_c["envios"].sum()))
         c2.metric("Gasto" + ESTIMADO_CORREO, txt_usd(usd_correo(float(periodo_c["creditos"].sum()))),
@@ -205,6 +247,13 @@ def pagina_correo() -> None:
             tabla_s["semana"] = tabla_s["semana_inicio"].apply(etiqueta_semana)
             st.markdown("### Correos por semana")
             grafica_barras(tabla_s, "semana", "envios", orden=list(tabla_s["semana"]), titulo_valor="Correos",
+                           color=COLOR_CANAL["correo"])
+            mensual = periodo_c.assign(mes=periodo_c["fecha"].dt.to_period("M").astype(str))
+            tabla_m = mensual.groupby("mes", as_index=False)["envios"].sum().sort_values("mes")
+            meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+            tabla_m["mes"] = tabla_m["mes"].apply(lambda m: f"{meses[int(m[5:7]) - 1]} {m[:4]}")
+            st.markdown("### Correos por mes")
+            grafica_barras(tabla_m, "mes", "envios", orden=list(tabla_m["mes"]), titulo_valor="Correos",
                            color=COLOR_CANAL["correo"])
         if not unidad_sel:
             st.markdown("### Gasto por unidad (USD)")

@@ -134,7 +134,11 @@ En local, sin Secrets, usuarios y bitácora se guardan en la carpeta del proyect
 - **Unidad de cada correo:** se decide por su **remitente** (Email Sender Name), en Correo → **Remitentes**: a cada remitente se le elige una unidad, o «Ninguna unidad» si no es de un área que manejemos (solo cuenta en el total). Ya vienen asignados *Pontificia Universidad Javeriana* → Mercadeo, *Egresados – …* → Egresados y *Donaciones …* → Donaciones. Si un reporte trae un **remitente nuevo**, queda «Sin asignar» y el tablero avisa al Equipo CRM hasta que alguien lo asigne. Para una unidad nueva (por ejemplo, Educación Continua), primero se crea en Todos los canales → Configuración.
 - **Créditos adquiridos y asignados:** en Correo → Créditos (hoy 30.000.000 adquiridos el 01/01/2026, de la captura del dashboard de Marketing Cloud). Las asignaciones por unidad están en 0 hasta que se llenen.
 - **Pestañas:** Resumen (estado del total y de cada unidad, gasto por unidad en USD, correos por remitente, journeys con más correos), Remitentes, Journeys (buscador) y Créditos. Una unidad ve su Resumen y sus Journeys.
-- **Sin fecha de envío:** el reporte actual trae el total por journey, sin fecha. Por eso el correo es **acumulado** (al día en que se exportó el reporte), el «Periodo a consultar» no aplica y no hay gráficas por semana ni fecha de agotamiento. Si el reporte se exporta con la columna **Send Date**, todo eso se activa solo, sin cambiar código.
+- **Fecha de envío:** el reporte trae la columna de fecha (*Send Date*), que se detecta sola. Con ella:
+  - el «Periodo a consultar» filtra los correos con sus propias fechas (el correo puede llegar más lejos que WhatsApp; el encabezado dice «Datos de correo al …»);
+  - la **fecha de agotamiento** se estima con el ritmo de los últimos 28 días (en la tarjeta se ve «al ritmo de N correos por semana»);
+  - hay gráficas de **correos por semana y por mes**, y Todos los canales muestra el gasto y los envíos de correo por semana.
+- **Sin fecha de envío:** si algún reporte llega sin esa columna, el correo se muestra **acumulado** (al día en que se exportó), sin gráficas por semana ni fecha de agotamiento. No hay que cambiar código en ningún caso.
 - Se guarda en `config.json`, sección `correo` (compras, unidades, remitentes).
 
 ## SMS

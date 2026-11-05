@@ -46,13 +46,9 @@ def _cerrar(ctx: dict) -> None:
             pass
 
 
-def _mover(delta: int) -> None:
-    st.session_state["guia_paso"] = st.session_state.get("guia_paso", 0) + delta
-
-
 @st.dialog("Guía rápida", width="large", dismissible=False)
 def _dialogo(ctx: dict) -> None:
-    paso = st.session_state.get("guia_paso", 0)
+    paso = min(max(st.session_state.get("guia_paso", 0), 0), len(PASOS) - 1)
     titulo, icono, texto = PASOS[paso]
     puntos = "".join(f'<span class="guia-punto{" activo" if i == paso else ""}"></span>' for i in range(len(PASOS)))
     st.markdown(f'<div class="guia-pasos">{puntos}<span class="guia-n">Paso {paso + 1} de {len(PASOS)}</span></div>',
@@ -60,15 +56,20 @@ def _dialogo(ctx: dict) -> None:
     st.markdown(f"#### {titulo}")
     st.markdown(texto)
     c1, c2, c3 = st.columns([1, 1, 1])
-    c1.button("Saltar guía", on_click=_cerrar, args=(ctx,), width="stretch", key="guia_saltar")
-    c2.button("Anterior", on_click=_mover, args=(-1,), disabled=paso == 0, width="stretch", key="guia_ant",
-              icon=":material/arrow_back:")
+    # Cada botón vuelve a dibujar toda la página (st.rerun): así la guía avanza o se cierra de verdad
+    if c1.button("Saltar guía", width="stretch", key="guia_saltar"):
+        _cerrar(ctx)
+        st.rerun()
+    if c2.button("Anterior", disabled=paso == 0, width="stretch", key="guia_ant", icon=":material/arrow_back:"):
+        st.session_state["guia_paso"] = paso - 1
+        st.rerun()
     if paso < len(PASOS) - 1:
-        c3.button("Siguiente", on_click=_mover, args=(1,), type="primary", width="stretch", key="guia_sig",
-                  icon=":material/arrow_forward:")
-    else:
-        c3.button("Empezar", on_click=_cerrar, args=(ctx,), type="primary", width="stretch", key="guia_fin",
-                  icon=":material/check:")
+        if c3.button("Siguiente", type="primary", width="stretch", key="guia_sig", icon=":material/arrow_forward:"):
+            st.session_state["guia_paso"] = paso + 1
+            st.rerun()
+    elif c3.button("Empezar", type="primary", width="stretch", key="guia_fin", icon=":material/check:"):
+        _cerrar(ctx)
+        st.rerun()
 
 
 CSS = """<style>

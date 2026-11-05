@@ -333,6 +333,14 @@ button[data-variant="segmented_control"] p, button[data-variant="segmented_contr
 .stTabs [data-baseweb="tab-border"] {background-color: var(--t-borde) !important;}
 [data-testid="stExpander"] details {background: var(--t-superficie) !important; border-color: var(--t-borde) !important;}
 [data-testid="stExpander"] summary:hover p {color: var(--t-primario);}
+[data-testid="stDialog"] > div, [data-testid="stDialog"] [role="dialog"] {background: var(--t-superficie) !important;
+  color: var(--t-texto) !important;}
+[data-testid="stDialog"] > div {border: 1px solid var(--t-borde-fuerte) !important;}
+[data-testid="stDialog"] [role="dialog"] p, [data-testid="stDialog"] [role="dialog"] li,
+[data-testid="stDialog"] [role="dialog"] h1, [data-testid="stDialog"] [role="dialog"] h2,
+[data-testid="stDialog"] [role="dialog"] h3, [data-testid="stDialog"] [role="dialog"] h4,
+[data-testid="stDialog"] [role="dialog"] strong, [data-testid="stDialog"] [role="dialog"] div {color: var(--t-texto);}
+[data-testid="stDialog"] [role="dialog"] button svg {color: currentColor;}
 [data-testid="stPopoverBody"], [data-baseweb="popover"] > div {background: var(--t-superficie) !important; color: var(--t-texto);
   border-color: var(--t-borde) !important;}
 [data-testid="stVerticalBlockBorderWrapper"], [data-testid="stForm"] {border-color: var(--t-borde) !important;}
