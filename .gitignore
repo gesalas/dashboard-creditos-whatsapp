@@ -5,3 +5,7 @@ __pycache__/
 vista_previa/
 data_anterior.xlsx
 actualizar_datos.log
+usuarios.json
+bitacora.json
+.streamlit/secrets.toml
+.streamlit/clave_sesion.txt

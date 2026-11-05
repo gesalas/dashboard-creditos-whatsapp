@@ -20,7 +20,10 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+import acceso as A
+import almacen
 import logica as L
+import sesion as S
 
 CARPETA = Path(__file__).parent
 RUTA_REPORTE = CARPETA / "data.xlsx"
@@ -199,6 +202,9 @@ st.markdown(
     [class*="st-key-lado-linea"] [data-testid="stRadioOption"] p {font-weight: 600; color: #1B1F24; font-size: 0.88rem;}
     [class*="st-key-lado-linea"] [data-testid="stRadioCaption"] {margin: 0 0 0 1.75rem; padding: 0;}
     [class*="st-key-lado-linea"] [data-testid="stRadioCaption"] p {font-size: 0.72rem; color: #6B6F76; margin: 0;}
+    .modo-pruebas {background: #FFF4E5; border: 1px solid #E8A33D; color: #7A4B00; border-radius: 8px;
+      padding: 8px 10px; font-size: 0.78rem; font-weight: 600; line-height: 1.35; margin-bottom: 10px;}
+    .modo-pruebas-ancho {font-size: 0.85rem; padding: 8px 14px;}
     .periodo-resuelto {display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;
                        color: #1B1F24; background: #F4F6FA; border-radius: 8px; padding: 7px 10px; margin: 0;}
     .periodo-resuelto b {font-weight: 650; color: #1F3864;}
@@ -583,6 +589,39 @@ except ValueError as error:
 
 
 # ---------------------------------------------------------------------------
+# Acceso: quién está viendo y qué unidades puede ver
+# ---------------------------------------------------------------------------
+
+marca = {"institucion": "Pontificia Universidad Javeriana", "area": "DTI · Equipo CRM",
+         "producto": "Créditos de WhatsApp"}
+marca.update(config.get("marca", {}))
+
+
+def responsables_unidades() -> dict:
+    try:
+        datos = json.loads((CARPETA / "alertas.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return (datos.get("unidades", {}) or {}).get("responsables", {}) or {}
+
+
+_logo_acceso = imagen_html(RUTA_LOGO, marca["institucion"]) if RUTA_LOGO else ""
+CTX = S.puerta({u: L.NOMBRE_UNIDAD[u] for u in L.UNIDADES}, responsables_unidades(), marca, _logo_acceso)
+QUIEN = CTX["correo"]
+
+
+def subir_y_registrar(evento: str, detalle: str, *rutas: Path) -> None:
+    """Después de guardar un archivo de configuración: lo anota en la bitácora y, en el enlace publicado,
+    lo sube a GitHub (si no, se perdería al reiniciarse la app)."""
+    A.registrar(evento, QUIEN, detalle)
+    for ruta in rutas:
+        try:
+            almacen.subir_archivo(ruta, f"{evento} ({QUIEN})")
+        except almacen.ErrorAlmacen as error:
+            st.session_state["aviso_subida"] = f"Se guardó, pero no se pudo subir {ruta.name} a GitHub: {error}"
+
+
+# ---------------------------------------------------------------------------
 # Periodos
 # ---------------------------------------------------------------------------
 
@@ -803,22 +842,18 @@ hay_cambios = (not unidades_vigentes[LINEAS_COMPRA].round(0).equals(unidades_gua
 # Barra lateral: qué ver
 # ---------------------------------------------------------------------------
 
-VISTAS = ["crm"] + list(L.UNIDADES)
+VISTAS = (["crm"] if CTX["admin"] else []) + [u for u in L.UNIDADES if u in CTX["unidades"]]
 NOMBRE_VISTA = {"crm": "Equipo CRM (todo)", **NOMBRE_UNIDAD_APP}
 VISTAS_LINEA = ["Ambas líneas", "UCP vs Outbound", "UCP", "Outbound"]
 ETIQUETA_LINEA = {"Ambas líneas": "Ambas líneas (total)", "UCP vs Outbound": "UCP vs Outbound (comparar)",
                   "UCP": f"UCP ({L.LINEAS['UCP']})", "Outbound": f"Outbound ({L.LINEAS['Outbound']})"}
 
-# La vista se puede abrir directo desde un enlace: ...?unidad=mercadeo
+# La vista se puede abrir directo desde un enlace: ...?unidad=mercadeo (solo si esa persona puede verla)
 if st.session_state.get("vista") not in (None, *VISTAS):
-    st.session_state["vista"] = "crm"
+    st.session_state["vista"] = VISTAS[0]
 if "vista" not in st.session_state:
     pedida = str(st.query_params.get("unidad", "")).lower().strip()
-    st.session_state["vista"] = pedida if pedida in VISTAS else "crm"
-
-marca = {"institucion": "Pontificia Universidad Javeriana", "area": "DTI · Equipo CRM",
-         "producto": "Créditos de WhatsApp"}
-marca.update(config.get("marca", {}))
+    st.session_state["vista"] = pedida if pedida in VISTAS else VISTAS[0]
 
 def titulo_lado(icono: str, titulo: str, subtitulo: str = "") -> None:
     """Encabezado de una sección de la barra lateral (ícono de Material Symbols + título)."""
@@ -838,11 +873,13 @@ with st.sidebar:
         f'<div class="marca-area">{marca["area"]}</div>'
         f'<div class="marca-producto"><span class="marca-punto"></span>{marca["producto"]}</div></div>',
         unsafe_allow_html=True)
+    S.bloque_lateral(CTX)
 
     with st.container(key="lado-vista"):
-        titulo_lado("visibility", "Vista", "Todo el Equipo CRM o una sola unidad")
+        titulo_lado("visibility", "Vista", "Todo el Equipo CRM o una sola unidad" if CTX["admin"] else
+                    ("Tus unidades" if len(VISTAS) > 1 else "Tu unidad"))
         vista = st.selectbox("Vista", VISTAS, key="vista", format_func=lambda v: NOMBRE_VISTA[v],
-                             label_visibility="collapsed")
+                             label_visibility="collapsed", disabled=len(VISTAS) == 1)
     unidad_sel = None if vista == "crm" else vista
     if unidad_sel:
         st.query_params["unidad"] = unidad_sel
@@ -923,6 +960,16 @@ with st.sidebar:
             "- **Periodo a consultar:** filtra lo usado en esas fechas; no cambia los disponibles ni el estado.\n"
             "- **Agotamiento estimado:** fecha en que se acabarían los créditos si se sigue al ritmo de los "
             "últimos 28 días, con las tarifas que rijan cada día.")
+
+
+if "aviso_subida" in st.session_state:
+    st.warning(st.session_state.pop("aviso_subida"), icon=":material/cloud_off:")
+if CTX["pruebas"]:
+    st.markdown('<div class="modo-pruebas modo-pruebas-ancho">MODO PRUEBAS · No es el tablero publicado: aquí no '
+                'se pide iniciar sesión, tienes permisos del Equipo CRM y los cambios se guardan solo en esta '
+                'carpeta.</div>', unsafe_allow_html=True)
+if S.pagina_actual(CTX, {u: L.NOMBRE_UNIDAD[u] for u in L.UNIDADES}, responsables_unidades()):
+    st.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -1150,7 +1197,6 @@ def primera_en_agotarse(por_linea: dict[str, dict]) -> tuple | None:
         return None
     _, agot, nombre_l, ritmo = min(candidatas, key=lambda c: c[0])
     return agot, nombre_l, ritmo
-    return info
 
 
 def etiqueta_corte() -> str:
@@ -1920,6 +1966,11 @@ def seccion_unidades_y_journeys() -> None:
         cfg_a.setdefault("unidades", {})["responsables"] = {u["clave"]: u["responsables"] for u in nuevas}
         RUTA_ALERTAS.write_text(json.dumps(cfg_a, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         quitadas = [previas[c]["nombre"] for c in previas if c not in claves]
+        agregadas = [u["nombre"] for u in nuevas if u["clave"] not in previas]
+        subir_y_registrar("Guarda unidades y journeys", "; ".join(x for x in (
+            f"{len(nuevas)} unidades", f"agrega {', '.join(agregadas)}" if agregadas else "",
+            f"quita {', '.join(quitadas)}" if quitadas else "",
+            f"{len(asignados)} journeys asignados a mano") if x), RUTA_CONFIG, RUTA_ALERTAS)
         for k in ("editor_lista_unidades", "editor_unidades"):
             st.session_state.pop(k, None)
         st.cache_data.clear()
@@ -2016,8 +2067,13 @@ if "Créditos" in tabs:
                                   "linea": r["Línea"] or "", "creditos": r["Créditos"], "nota": r["Nota"],
                                   "precio_usd_1000": r[COL_PRECIO] if pd.notna(r[COL_PRECIO]) else None}
                                  for _, r in compras_vigentes.iterrows() if r["Créditos"] > 0]
+            antes = {l: L.config_linea(config, l)["creditos_totales"] for l in LINEAS_COMPRA}
             L.guardar_creditos(RUTA_CONFIG, config, {l: presupuestos[l]["unidades"] for l in LINEAS_COMPRA},
                                compras_a_guardar)
+            subir_y_registrar("Guarda créditos", "; ".join(
+                f"{l}: {num(antes[l])} → {num(presupuestos[l]['creditos_totales'])} adquiridos, asignados "
+                + ", ".join(f"{NOMBRE_UNIDAD_APP[u]} {num(v)}" for u, v in presupuestos[l]["unidades"].items())
+                for l in LINEAS_COMPRA), RUTA_CONFIG)
             st.session_state.pop("editor_unidades", None)
             st.session_state.pop("editor_compras", None)
             st.cache_data.clear()
@@ -2166,6 +2222,9 @@ def pagina_todos() -> None:
                             for c, (_, r) in zip(CANALES, precios_ed.iterrows())}
                 nuevos_ok = {c: bool(r["Confirmado"]) for c, (_, r) in zip(CANALES, precios_ed.iterrows())}
                 L.guardar_precios(RUTA_CONFIG, config, nuevos_p, nuevos_ok)
+                subir_y_registrar("Guarda precios", "; ".join(
+                    f"{NOMBRE_CANAL[c]}: {txt_precio(nuevos_p[c])}{' (confirmado)' if nuevos_ok[c] else ''}"
+                    for c in CANALES), RUTA_CONFIG)
                 st.session_state.pop("editor_precios", None)
                 st.cache_data.clear()
                 st.toast("Precios guardados en config.json", icon=":material/check:")

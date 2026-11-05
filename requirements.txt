@@ -3,4 +3,6 @@ pandas>=2.0
 numpy
 altair>=5
 openpyxl
+bcrypt>=4.1
+requests
 pywin32; sys_platform == "win32"

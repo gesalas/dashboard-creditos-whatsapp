@@ -11,6 +11,13 @@ python -m streamlit run app.py
 
 Ejecutar desde la carpeta del repositorio. El dashboard abre en `http://localhost:8501`.
 
+Hay dos modos (en Windows también con doble clic en los `.bat`):
+
+| Modo | Comando | Para qué |
+|---|---|---|
+| Producción | `py -m streamlit run app.py` (`abrir_dashboard.bat`) | Igual que el enlace publicado: pide iniciar sesión. |
+| Pruebas | `py -m streamlit run app.py -- --pruebas` (`abrir_pruebas.bat`) | Sin inicio de sesión, con permisos del Equipo CRM, aviso naranja arriba y todo guardado en la carpeta local. Los correos se muestran en pantalla. En el enlace publicado este modo no existe aunque se pase el parámetro. |
+
 En Windows, si `python` no se reconoce, usar `py` en su lugar (`py -m streamlit run app.py`). Se usa `python -m` en lugar de `streamlit` directamente porque en Windows la carpeta de ejecutables de Python muchas veces no está en el PATH.
 
 ## Archivos
@@ -21,6 +28,9 @@ En Windows, si `python` no se reconoce, usar `py` en su lugar (`py -m streamlit 
 | `tarifas/` | Una tabla de tarifas por vigencia, con el nombre de la fecha en que empieza a regir (`2026-11-01.csv`). Columnas `ISO`, `Country`, `Marketing`, `Utility`. La fila `OTHER` se usa para países que no están en la tabla. `notas.json` guarda observaciones por tabla (por ejemplo, si es provisional). | Cada vez que Salesforce publique una tabla nueva |
 | `tarifas.csv` | Respaldo: tabla única que solo se usa si no existe la carpeta `tarifas/`. | No hace falta actualizarlo |
 | `config.json` | Compras de créditos con su línea (`compras`), asignación a unidades por línea (`ucp`, `outbound`; los totales y `general` se calculan solos), umbrales del semáforo (`semaforo`) y textos del encabezado (`marca`). Precios por canal (`precios_usd_1000`), unidades y journeys. Se edita desde WhatsApp → Créditos y Todos los canales → Configuración. | Cuando se compren créditos o cambie la asignación |
+| `acceso.json` | Dominio permitido para crear cuentas y lista de correos del **Equipo CRM** (administradores). | Cuando entre o salga alguien del Equipo CRM |
+| `usuarios.json`, `bitacora.json` | Cuentas (contraseñas cifradas con bcrypt) y registro de cambios. Los crea la app; no se suben con git (ver Acceso). | Solos |
+| `acceso.py`, `sesion.py`, `almacen.py`, `correo_app.py` | Cuentas y roles, pantallas de acceso, dónde se guardan los archivos y envío de correos de la app. | Desarrollo |
 | `logica.py` | Todos los cálculos. No depende de Streamlit. | Desarrollo |
 | `app.py` | La interfaz: filtros, pestañas y gráficas. | Desarrollo |
 | `.streamlit/config.toml` | Colores y tema del dashboard. | Desarrollo |
@@ -48,6 +58,47 @@ Los cálculos son los mismos de la versión anterior del dashboard, salvo las ta
 3. Recargar el dashboard. No hay que cambiar código.
 
 Tablas cargadas hoy: 01/12/2025, 01/05/2026, 01/08/2026 y 01/11/2026. Las de mayo, agosto y noviembre se extrajeron de los PDFs oficiales y se verificaron con dos lecturas independientes (la de mayo, además, contra el PDF descargado). La de diciembre 2025 no tiene PDF oficial disponible; se usa la tabla que traía el dashboard (ver `tarifas/notas.json`).
+
+## Acceso: cuentas y roles
+
+Para entrar hay que iniciar sesión. Quien encuentre el enlace sin una cuenta aprobada no ve ningún dato.
+
+**Roles**
+
+| Rol | Quién | Qué ve |
+|---|---|---|
+| Equipo CRM | Solo los correos de `acceso.json` → `equipo_crm`. Nadie puede darse este rol desde la app. | Todo, más Usuarios y Bitácora |
+| Usuario de unidad | Cuenta con una o más unidades aprobadas | Solo sus unidades (si tiene varias, las cambia en Vista; no se suman). Sin las pestañas Unidades, Créditos ni Configuración. Un enlace `?unidad=` a otra unidad lo lleva a la suya. |
+| Pendiente | Creó la cuenta pero no tiene unidades aprobadas | Una pantalla de espera; puede pedir otra unidad o cerrar sesión |
+
+**Crear cuenta:** solo correos `@javeriana.edu.co`. La persona escribe su nombre y correo, recibe un código de 6 dígitos (vence en 15 minutos, 5 intentos), elige su unidad y crea su contraseña (mínimo 10 caracteres, sin contener su correo). Si su correo es **responsable** de esa unidad (Configuración → Unidades, que es lo mismo que `alertas.json`), la unidad queda aprobada de una vez; si no, queda pendiente y el Equipo CRM recibe un correo para aprobarla o rechazarla en **Usuarios**. Los del Equipo CRM no eligen unidad.
+
+**Seguridad**
+
+- Las contraseñas se guardan cifradas con bcrypt; los códigos solo existen en memoria y la bitácora nunca guarda ninguno de los dos.
+- 5 intentos fallidos bloquean la cuenta 15 minutos (recuperar la contraseña con código la desbloquea).
+- Códigos: uno por minuto y máximo 5 por hora por correo.
+- «Recordarme» deja la sesión abierta 30 días en ese navegador con una cookie firmada. Cambiar la contraseña, recibir una contraseña temporal, ser desactivado o usar «Cerrar sesión en todos los equipos» cierra todas las sesiones recordadas.
+
+**Usuarios (Equipo CRM):** aprobar o rechazar solicitudes, cambiar las unidades de una cuenta, desactivarla o activarla, darle una contraseña temporal (debe cambiarla al entrar) y crear una cuenta para alguien que no recibe el código. Marca las cuentas que llevan más de 90 días sin entrar.
+
+**Mi cuenta:** cambiar la contraseña, pedir acceso a otra unidad y cerrar sesión en todos los equipos.
+
+**Bitácora (Equipo CRM):** quién hizo qué y cuándo: cuentas creadas, aprobaciones y rechazos, cambios de unidades de una cuenta, desactivaciones, contraseñas temporales, bloqueos, inicios de sesión y cambios de créditos, precios y unidades (con lo que cambió). Se puede buscar, filtrar y descargar en CSV.
+
+### Configuración para el enlace publicado (Secrets)
+
+En Streamlit Community Cloud los archivos que la app modifica se borran cuando la app se reinicia. Por eso, en el enlace publicado, `usuarios.json` y `bitacora.json` se guardan en GitHub, en una rama aparte (`datos-acceso`, se crea sola) para que cada registro no vuelva a publicar la app; y lo que se guarda en Créditos o Configuración (`config.json`, `alertas.json`) se sube a la rama de la app.
+
+Los valores van en **Settings → Secrets** de la app en Streamlit Cloud (o en `.streamlit/secrets.toml` en local, que no se sube). El modelo está en `.streamlit/secrets.toml.ejemplo`:
+
+- `[acceso] clave_sesion`: frase larga al azar para firmar el «recordarme».
+- `[correo]`: cuenta de Gmail con **contraseña de aplicación** (no la contraseña normal) para enviar códigos y avisos.
+- `[github]`: token de grano fino creado por el dueño del repositorio, solo para este repositorio, con permiso *Contents: Read and write*. Tiene fecha de vencimiento: hay que renovarlo antes.
+
+Antes de pasar el inicio de sesión a la rama publicada: poner los correos del Equipo CRM en `acceso.json`, llenar los Secrets y que cada persona del Equipo CRM cree su cuenta. Sin `[correo]` en el enlace publicado no se pueden enviar códigos: crear cuenta y recuperar contraseña quedan desactivados (el Equipo CRM puede crear cuentas con contraseña temporal).
+
+En local, sin Secrets, todo se guarda en la carpeta del proyecto y los correos se muestran en pantalla solo si se abre desde el mismo computador.
 
 ## Vocabulario
 
