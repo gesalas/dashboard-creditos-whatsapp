@@ -17,6 +17,7 @@ Archivos de entrada (en la carpeta del repositorio):
 from __future__ import annotations
 
 import json
+import re
 import warnings
 from pathlib import Path
 
@@ -329,7 +330,9 @@ def adquirido_al(config_compras: list[dict], linea: str, fecha: pd.Timestamp | N
 # ---------------------------------------------------------------------------
 
 CANALES = {"whatsapp": "WhatsApp", "correo": "Correo", "sms": "SMS"}
-PRECIOS_POR_DEFECTO = {"whatsapp": 4.16, "correo": None, "sms": None}   # USD por cada 1.000 créditos (editable)
+# USD por cada 1.000 créditos (editable en Todos los canales → Configuración). Confirmados por el Equipo CRM:
+# WhatsApp 4,16; Correo 4,00; SMS 0,004888 por crédito = 4,888 por 1.000.
+PRECIOS_POR_DEFECTO = {"whatsapp": 4.16, "correo": 4.0, "sms": 4.888}
 
 
 def precios_canal(config: dict) -> dict[str, float | None]:
@@ -647,3 +650,152 @@ def consumo_estimado(envios: pd.DataFrame, inicio: pd.Timestamp, fin: pd.Timesta
         for k in METRICAS:
             total[k] += diario[k]
     return total
+
+
+
+# ---------------------------------------------------------------------------
+# Correo
+#
+# En Salesforce Message Credits un correo estándar cuesta 1 crédito sin importar el país (Email Standard = 1).
+# Otros tipos tienen otro multiplicador (Priority 4, Attachment 5, impresiones de Einstein 1 o 2), pero el
+# reporte de envíos no los distingue, así que se cobra 1 crédito por envío.
+#
+# Cada envío se asigna a una unidad por su REMITENTE ("Email Sender Name"): el Equipo CRM decide en el
+# dashboard de qué unidad es cada remitente, o si no es de ninguna (solo cuenta en el total). Los remitentes
+# nuevos quedan "sin asignar" hasta que alguien los asigne.
+# ---------------------------------------------------------------------------
+
+CREDITOS_POR_CORREO = 1.0
+NINGUNA_UNIDAD = "ninguna"          # remitente que no es de ninguna unidad: solo cuenta en el total
+SIN_ASIGNAR = "sin_asignar"         # remitente nuevo, pendiente de que el Equipo CRM lo asigne
+COMPRAS_CORREO_POR_DEFECTO = [{"fecha": "2026-01-01", "creditos": 30000000,
+                               "nota": "Créditos de correo (dashboard de Marketing Cloud)"}]
+REMITENTES_POR_DEFECTO = {
+    "Pontificia Universidad Javeriana": "mercadeo",
+    "Egresados – Pontificia Universidad Javeriana": "egresados",
+    "Donaciones Pontificia Universidad Javeriana": "donaciones",
+}
+
+
+def _norm_col(texto) -> str:
+    return re.sub(r"\s+", " ", str(texto or "")).strip().lower()
+
+
+def leer_reporte_correo(ruta: Path) -> tuple[pd.DataFrame, dict]:
+    """Reporte de envíos de correo de Marketing Cloud Intelligence (Data_correo.xlsx).
+
+    Busca la fila de encabezados (la que tiene "Email Sends"); acepta las columnas Email Sender Name,
+    Journey Name, Email Content Name, Email Sends y, si viene, una fecha de envío (Send Date / Fecha).
+    Devuelve los envíos y la información del reporte (rango de fechas del widget, si trae fecha)."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Workbook contains no default style")
+        crudo = pd.read_excel(ruta, header=None, dtype=object)
+    info = {"rango": None, "con_fecha": False, "generado": None}
+    fila_enc = None
+    for i, fila in crudo.iterrows():
+        valores = [_norm_col(v) for v in fila.values]
+        if valores and valores[0].startswith("widget date range"):
+            texto = " ".join(str(v) for v in fila.values[1:] if pd.notna(v))
+            fechas = re.findall(r"(\d{2})-(\d{2})-(\d{4})", texto)
+            if len(fechas) >= 2:
+                info["rango"] = tuple(pd.Timestamp(int(a), int(m), int(d)) for d, m, a in fechas[:2])
+        if "email sends" in valores or "envíos" in valores or "envios" in valores:
+            fila_enc = i
+            break
+    if fila_enc is None:
+        raise ValueError(f"{Path(ruta).name} no tiene la columna «Email Sends». ¿Es el reporte de correo?")
+    try:   # fecha en que se exportó el reporte (propiedades del archivo): es el corte de los datos
+        import openpyxl
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            libro = openpyxl.load_workbook(ruta, read_only=True)
+            creado = libro.properties.created or libro.properties.modified
+            libro.close()
+        info["generado"] = pd.Timestamp(creado) if creado else None
+    except Exception:
+        info["generado"] = None
+    datos = crudo.iloc[fila_enc + 1:].copy()
+    datos.columns = [_norm_col(c) for c in crudo.iloc[fila_enc].values]
+    buscar = lambda *nombres: next((c for c in datos.columns if c in nombres), None)  # noqa: E731
+    c_rem = buscar("email sender name", "remitente", "sender name")
+    c_jou = buscar("journey name", "journey")
+    c_con = buscar("email content name", "email name", "contenido")
+    c_env = buscar("email sends", "envíos", "envios", "sends")
+    c_fec = next((c for c in datos.columns if "date" in c or "fecha" in c), None)
+    salida = pd.DataFrame({
+        "remitente": datos[c_rem].astype(str).str.strip() if c_rem else "Sin remitente",
+        "journey": datos[c_jou].where(datos[c_jou].notna(), "(sin journey)").astype(str).str.strip() if c_jou else "(sin journey)",
+        "contenido": datos[c_con].astype(str).str.strip() if c_con else "",
+        "envios": pd.to_numeric(datos[c_env], errors="coerce"),
+    })
+    if c_fec:
+        salida["fecha"] = pd.to_datetime(datos[c_fec], errors="coerce", dayfirst=True)
+        info["con_fecha"] = bool(salida["fecha"].notna().any())
+    else:
+        salida["fecha"] = pd.NaT
+    # Fuera la fila de totales, filas vacías y sin envíos
+    salida = salida[(salida["remitente"].str.lower() != "totals") & (salida["remitente"].str.lower() != "nan")]
+    salida = salida[salida["envios"].fillna(0) > 0].reset_index(drop=True)
+    return salida, info
+
+
+def config_correo(config: dict) -> dict:
+    """Compras de correo, créditos asignados a cada unidad y unidad de cada remitente (config.json, "correo")."""
+    c = config.get("correo") or {}
+    compras = c.get("compras")
+    remitentes = dict(REMITENTES_POR_DEFECTO) if c.get("remitentes") is None else dict(c.get("remitentes"))
+    return {"compras": list(COMPRAS_CORREO_POR_DEFECTO if compras is None else compras),
+            "unidades": {u: float((c.get("unidades") or {}).get(u, 0) or 0) for u in UNIDADES},
+            "remitentes": remitentes}
+
+
+def preparar_correo(envios: pd.DataFrame, config: dict) -> pd.DataFrame:
+    """Unidad (por remitente), créditos (1 por envío) y si es una prueba."""
+    remitentes = config_correo(config)["remitentes"]
+    datos = envios.copy()
+    datos["unidad"] = datos["remitente"].map(
+        lambda r: remitentes.get(r) if remitentes.get(r) in (*UNIDADES, NINGUNA_UNIDAD) else SIN_ASIGNAR)
+    datos["creditos"] = datos["envios"] * CREDITOS_POR_CORREO
+    datos["prueba"] = datos["journey"].str.upper().str.startswith(("PRUEBA", "PR_")) & ~datos["journey"].str.upper(
+        ).str.replace(" ", "").str.startswith(tuple(p.replace(" ", "") for p in NO_SON_PRUEBAS))
+    return datos
+
+
+def remitentes_pendientes(envios_correo: pd.DataFrame) -> pd.DataFrame:
+    """Remitentes sin unidad asignada, con sus envíos (para avisar al Equipo CRM)."""
+    pend = envios_correo[envios_correo["unidad"] == SIN_ASIGNAR]
+    return (pend.groupby("remitente", as_index=False)["envios"].sum().sort_values("envios", ascending=False))
+
+
+def guardar_correo(ruta: Path, config: dict, *, compras: list[dict] | None = None,
+                   unidades: dict[str, float] | None = None, remitentes: dict[str, str] | None = None) -> None:
+    actual = config_correo(config)
+    nuevo = dict(config)
+    nuevo["correo"] = {
+        "compras": actual["compras"] if compras is None else compras,
+        "unidades": {u: round(float(v), 0) for u, v in (actual["unidades"] if unidades is None else unidades).items()},
+        "remitentes": actual["remitentes"] if remitentes is None else remitentes,
+    }
+    escribir_config(ruta, nuevo)
+
+
+# ---------------------------------------------------------------------------
+# SMS (aún sin reporte): multiplicadores por país de Salesforce Message Credits (carpeta tarifas_sms/)
+# ---------------------------------------------------------------------------
+
+SMS_MULTIPLICADOR_OTROS = 80.0   # países que no están en la tabla
+
+
+def leer_tarifas_sms(carpeta: Path) -> pd.DataFrame:
+    """Tablas de multiplicadores de SMS: un CSV por vigencia (AAAA-MM-DD.csv) con ISO, Country, Multiplier."""
+    filas = []
+    for ruta in sorted(Path(carpeta).glob("*.csv")):
+        try:
+            desde = pd.Timestamp(ruta.stem)
+        except ValueError:
+            continue
+        t = pd.read_csv(ruta, dtype={"ISO": str})
+        t["vigente_desde"] = desde
+        filas.append(t)
+    return pd.concat(filas, ignore_index=True) if filas else pd.DataFrame(columns=["ISO", "Country", "Multiplier",
+                                                                                   "vigente_desde"])

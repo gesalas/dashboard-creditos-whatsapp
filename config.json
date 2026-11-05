@@ -16,5 +16,6 @@
   "unidad_por_defecto": "mercadeo",
   "journeys": {},
   "semaforo": {"amarillo_pct": 80, "rojo_pct": 95, "fecha_inicio_conteo": null},
-  "marca": {"institucion": "Pontificia Universidad Javeriana", "area": "DTI · Equipo CRM", "producto": "Créditos de WhatsApp"}
+  "marca": {"institucion": "Pontificia Universidad Javeriana", "area": "DTI · Equipo CRM", "producto": "Créditos de WhatsApp"},
+  "correo": {"compras": [{"fecha": "2026-01-01", "creditos": 30000000.0, "nota": "Créditos de correo (dashboard de Marketing Cloud)"}], "unidades": {"mercadeo": 500000.0, "egresados": 150000.0, "donaciones": 10000.0}, "remitentes": {"Pontificia Universidad Javeriana": "mercadeo", "Egresados – Pontificia Universidad Javeriana": "egresados", "Donaciones Pontificia Universidad Javeriana": "donaciones", "Hoy en la Javeriana": "mercadeo", "Dirección de Educación Continua": "mercadeo", "Enlace Javeriano": "mercadeo"}}
 }

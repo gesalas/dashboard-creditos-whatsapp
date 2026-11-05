@@ -606,6 +606,23 @@ except ValueError as error:
     st.stop()
 
 
+RUTA_CORREO = CARPETA / "data_correo.xlsx"     # reporte de envíos de correo (Marketing Cloud Intelligence)
+
+
+@st.cache_data(show_spinner="Cargando correo...")
+def cargar_correo(_marca: float):
+    if not RUTA_CORREO.exists():
+        return None, {}
+    return L.leer_reporte_correo(RUTA_CORREO)
+
+
+try:
+    correo_crudo, info_correo = cargar_correo(RUTA_CORREO.stat().st_mtime if RUTA_CORREO.exists() else 0)
+except Exception as error:   # un archivo de correo dañado no debe tumbar el tablero de WhatsApp
+    correo_crudo, info_correo = None, {"error": str(error)}
+correo = L.preparar_correo(correo_crudo, config) if correo_crudo is not None else None
+
+
 # ---------------------------------------------------------------------------
 # Acceso: quién está viendo y qué unidades puede ver
 # ---------------------------------------------------------------------------
@@ -964,7 +981,10 @@ with st.sidebar:
             f'<div class="dato-fila"><span>Antigüedad</span><b>{texto_atraso}</b></div>'
             f'<div class="dato-fila"><span>Desde</span><b>{fecha_min:%d/%m/%Y}</b></div>'
             f'<div class="dato-fila"><span>Reporte</span><b>{generado_txt}</b></div>'
-            f'<div class="dato-fila"><span>Tarifas</span><b>{texto_tarifas}</b></div>',
+            f'<div class="dato-fila"><span>Tarifas</span><b>{texto_tarifas}</b></div>'
+            + (f'<div class="dato-fila"><span>Correo</span><b>reporte del {pd.Timestamp(info_correo["generado"]):%d/%m/%Y}</b></div>'
+               if info_correo.get("generado") is not None and pd.notna(info_correo.get("generado")) else
+               ('<div class="dato-fila"><span>Correo</span><b>sin reporte</b></div>' if correo is None else "")),
             unsafe_allow_html=True)
         if st.button("Recargar datos", width="stretch", icon=":material/refresh:",
                      help="Vuelve a leer data.xlsx, las tarifas y config.json. Úsalo después de reemplazar el reporte."):
@@ -1015,7 +1035,7 @@ CANALES = list(L.CANALES)                      # whatsapp, correo, sms
 OPCIONES_CANAL = ["todos"] + CANALES
 NOMBRE_CANAL = {"todos": "Todos los canales", **L.CANALES}
 COLOR_CANAL = {"whatsapp": "#128C7E", "correo": "#7B4FBF", "sms": "#5B6B7F"}
-CANALES_CONECTADOS = {"whatsapp"}              # correo y SMS: falta su reporte y sus tarifas
+CANALES_CONECTADOS = {"whatsapp"} | ({"correo"} if correo is not None else set())   # SMS: falta su reporte
 
 if st.session_state.get("canal") not in OPCIONES_CANAL:
     pedido = str(st.query_params.get("canal", "")).lower().strip()
@@ -1086,6 +1106,8 @@ texto_ambito = f"{nombre_ambito} en {texto_linea}"
 # ---------------------------------------------------------------------------
 
 icono_html = imagen_html(RUTA_ICONO, "WhatsApp") if RUTA_ICONO else ICONO_CHAT
+_g_correo = info_correo.get("generado")
+corte_correo_txt = f"{pd.Timestamp(_g_correo):%d/%m/%Y}" if _g_correo is not None and pd.notna(_g_correo) else ""
 dias_desde = (date.today() - fecha_max).days
 frescura = ("hoy" if dias_desde <= 0 else "hace 1 día" if dias_desde == 1 else f"hace {dias_desde} días")
 clase_frescura = "frescura-alerta" if dias_desde > 7 else "frescura"
@@ -1095,11 +1117,15 @@ with zona_titulo:
         f'<div><div class="titulo-texto">Créditos de mensajería'
         f'{" · " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else ""}</div>'
         f'<div class="subtitulo">'
-        f'<span class="{clase_frescura}">Datos de WhatsApp al {fecha_max:%d/%m/%Y} · {frescura}</span>'
-        f'<span class="pastilla">{"Unidad " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else "Equipo CRM"}</span>'
-        f'<span class="pastilla">Periodo: {inicio:%d/%m/%Y} – {fin:%d/%m/%Y}</span>'
-        f'</div></div></div>', unsafe_allow_html=True)
-    if dias_desde > 7:
+        + (f'<span class="{clase_frescura}">Datos de WhatsApp al {fecha_max:%d/%m/%Y} · {frescura}</span>'
+           if canal != "correo" else "")
+        + (f'<span class="frescura">Correo: reporte del {corte_correo_txt}</span>'
+           if canal in ("correo", "todos") and corte_correo_txt else "")
+        + f'<span class="pastilla">{"Unidad " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else "Equipo CRM"}</span>'
+        + (f'<span class="pastilla">Periodo: {inicio:%d/%m/%Y} – {fin:%d/%m/%Y}</span>'
+           if canal != "correo" or info_correo.get("con_fecha") else '<span class="pastilla">Correo: acumulado</span>')
+        + '</div></div></div>', unsafe_allow_html=True)
+    if dias_desde > 7 and canal != "correo":
         st.warning(f"El reporte llega hasta el {fecha_max:%d/%m/%Y} ({frescura}). El consumo real puede ser mayor: "
                    "exporta un reporte nuevo de Marketing Cloud y reemplaza data.xlsx.", icon=":material/schedule:")
     if hay_cambios:
@@ -1111,10 +1137,13 @@ if canal == "whatsapp":
                     ["Resumen", "Proyección", "Unidades", "Journeys", "Detalle", "Créditos"])
 elif canal == "todos":
     nombres_tabs = ["Resumen"] if unidad_sel else ["Resumen", "Configuración"]
+elif canal == "correo" and "correo" in CANALES_CONECTADOS:
+    nombres_tabs = ["Resumen", "Journeys"] if unidad_sel else ["Resumen", "Remitentes", "Journeys", "Créditos"]
 else:
     nombres_tabs = []
 tabs = dict(zip(nombres_tabs, st.tabs(nombres_tabs))) if nombres_tabs else {}
 tabs_todos = tabs if canal == "todos" else {}
+tabs_correo = tabs if canal == "correo" else {}
 if canal != "whatsapp":
     tabs = {}   # las secciones de WhatsApp no se dibujan
 
@@ -2175,11 +2204,18 @@ def pagina_todos() -> None:
         st.markdown(f"### Todos los canales · {nombre_ambito}")
         nota("Cada canal tiene su propia bolsa de créditos y sus créditos no valen lo mismo, así que aquí se comparan "
              "en lo que sí se puede sumar: <b>dólares</b> (con el precio por 1.000 créditos de cada canal) y "
-             "<b>entregas</b>. Por ahora solo WhatsApp está conectado.")
+             "<b>mensajes</b>. SMS aún no está conectado."
+             + ("" if correo is None or info_correo.get("con_fecha") else
+                " El reporte de correo no trae fecha de envío: el correo se suma con todo su acumulado."))
 
         al = "a la fecha" if (fin >= fin_datos and not futuro) else f"al {fin:%d/%m/%Y}"
         gasto = {"whatsapp": e_w.get("usd") or 0.0}
         comprado = e_w.get("usd_disponible")
+        e_c = estado_correo(unidad_sel) if correo is not None else None
+        if e_c is not None:
+            gasto["correo"] = e_c.get("usd") or 0.0
+            if e_c.get("usd_disponible"):
+                comprado = (comprado or 0.0) + e_c["usd_disponible"]
         st.markdown(f"#### Gasto en dólares {al}{ESTIMADO_USD}")
         if comprado:
             st.markdown(f'<div class="cifra-grande">{txt_usd(sum(gasto.values()))} <small>de {txt_usd(comprado)} '
@@ -2191,18 +2227,25 @@ def pagina_todos() -> None:
                     "Todos los canales → Configuración.", icon=":material/payments:")
 
         entregas = {"whatsapp": float(periodo["deliveries"].sum())}
-        st.markdown(f"#### Entregas del {inicio:%d/%m/%Y} al {fin_real:%d/%m/%Y}")
-        st.markdown(f'<div class="cifra-grande">{num(sum(entregas.values()))} <small>mensajes entregados</small></div>',
-                    unsafe_allow_html=True)
+        if e_c is not None:
+            entregas["correo"] = float(correo_en_periodo(correo if not unidad_sel else
+                                                         correo[correo["unidad"] == unidad_sel])["envios"].sum())
+        st.markdown(f"#### Mensajes del {inicio:%d/%m/%Y} al {fin_real:%d/%m/%Y}")
+        st.markdown(f'<div class="cifra-grande">{num(sum(entregas.values()))} <small>mensajes (WhatsApp entregados'
+                    f'{", correos enviados" if e_c is not None else ""})</small></div>', unsafe_allow_html=True)
         st.markdown(barra_canales(list(entregas.items()), None, num), unsafe_allow_html=True)
 
         st.markdown("#### Cada canal")
         cols = st.columns(len(CANALES))
         for col, c in zip(cols, CANALES):
             with col:
-                if c in CANALES_CONECTADOS:
-                    e_c = dict(e_w, titulo=NOMBRE_CANAL[c])
-                    tarjeta(e_c)
+                if c == "correo" and e_c is not None:
+                    st.markdown(f'<div class="semaforo">{tarjeta_correo(dict(e_c, titulo="Correo"), "Adquiridos" if not unidad_sel else "Asignados")}</div>',
+                                unsafe_allow_html=True)
+                    st.button("Ver Correo", key="ir_canal_correo", on_click=ir_a_canal, args=("correo",),
+                              icon=":material/arrow_forward:", width="stretch")
+                elif c in CANALES_CONECTADOS:
+                    tarjeta(dict(e_w, titulo=NOMBRE_CANAL[c]))
                     st.button(f"Ver {NOMBRE_CANAL[c]}", key=f"ir_canal_{c}", on_click=ir_a_canal, args=(c,),
                               icon=":material/arrow_forward:", width="stretch")
                 else:
@@ -2222,20 +2265,27 @@ def pagina_todos() -> None:
                         unsafe_allow_html=True)
             grafica_barras(tabla_e, "semana", "deliveries", orden=orden_e, titulo_valor="Entregas",
                            color=COLOR_CANAL["whatsapp"])
-            st.caption("Cuando se conecten Correo y SMS, cada canal tendrá su gráfica aquí, una debajo de la otra.")
+            st.caption("Correo no aparece por semana porque su reporte no trae fecha de envío; SMS aún no está conectado."
+                       if not info_correo.get("con_fecha") else "SMS aún no está conectado.")
 
         if not unidad_sel:
             st.markdown("#### Por unidad")
             filas_u = []
             for u in L.UNIDADES:
                 d_u = periodo[periodo["unidad"] == u]
+                c_u = correo_en_periodo(correo[correo["unidad"] == u]) if correo is not None else None
                 filas_u.append({"Unidad": NOMBRE_UNIDAD_APP[u], "w_usd": round(usd_de(d_u) or 0.0),
-                                "w_ent": float(d_u["deliveries"].sum()), "correo": "Sin conectar", "sms": "Sin conectar"})
+                                "w_ent": float(d_u["deliveries"].sum()),
+                                "c_usd": round(usd_correo(float(c_u["creditos"].sum())) or 0.0) if c_u is not None else None,
+                                "c_env": float(c_u["envios"].sum()) if c_u is not None else None,
+                                "sms": "Sin conectar"})
             vista_u = pd.DataFrame(filas_u)
             st.dataframe(vista_u, hide_index=True, width="stretch", column_config={
                 "w_usd": st.column_config.NumberColumn(f"WhatsApp · gasto USD{ESTIMADO_USD}", format="localized"),
                 "w_ent": st.column_config.NumberColumn("WhatsApp · entregas", format="localized"),
-                "correo": st.column_config.TextColumn("Correo"), "sms": st.column_config.TextColumn("SMS")})
+                "c_usd": st.column_config.NumberColumn(f"Correo · gasto USD{ESTIMADO_CORREO}", format="localized"),
+                "c_env": st.column_config.NumberColumn("Correo · correos", format="localized"),
+                "sms": st.column_config.TextColumn("SMS")})
             st.caption(f"Gasto y entregas del periodo consultado ({inicio:%d/%m/%Y} al {fin_real:%d/%m/%Y}).")
 
     if "Configuración" in tabs_todos:
@@ -2250,8 +2300,8 @@ def pagina_todos() -> None:
                 base_p, key="editor_precios", hide_index=True, width="stretch", disabled=["Canal"],
                 column_config={
                     "Canal": st.column_config.TextColumn("Canal"),
-                    "Precio": st.column_config.NumberColumn("USD por 1.000 créditos", min_value=0.0, step=0.01,
-                                                            format="%.2f"),
+                    "Precio": st.column_config.NumberColumn("USD por 1.000 créditos", min_value=0.0, step=0.001,
+                                                            format="%.3f"),
                     "Confirmado": st.column_config.CheckboxColumn(
                         "Confirmado", help="Márcalo cuando el valor venga del contrato o la factura."),
                 })
@@ -2271,20 +2321,302 @@ def pagina_todos() -> None:
             seccion_unidades_y_journeys()
 
 
+# ---------------------------------------------------------------------------
+# Correo
+# ---------------------------------------------------------------------------
+
+CFG_CORREO = L.config_correo(config)
+NOMBRE_DESTINO_CORREO = {**NOMBRE_UNIDAD_APP, L.NINGUNA_UNIDAD: "Ninguna unidad (solo en el total)",
+                         L.SIN_ASIGNAR: "Sin asignar"}
+COLOR_DESTINO_CORREO = {**{NOMBRE_UNIDAD_APP[u]: c for u, c in COLOR_UNIDAD.items()},
+                        "Ninguna unidad (solo en el total)": TEMA["texto_ter"], "Sin asignar": TEMA["borde_fuerte"]}
+
+
+def precio_correo() -> float | None:
+    """Precio por 1.000 créditos de correo: promedio de las compras (si alguna trae su precio) o el del canal."""
+    total, valor = 0.0, 0.0
+    for c in CFG_CORREO["compras"]:
+        cred = float(c.get("creditos") or 0)
+        p = c.get("precio_usd_1000") or PRECIOS.get("correo")
+        if p:
+            total += cred
+            valor += cred * float(p)
+    return valor / total if total else PRECIOS.get("correo")
+
+
+def usd_correo(creditos: float) -> float | None:
+    p = precio_correo()
+    return None if p is None else creditos * p / 1000
+
+
+ESTIMADO_CORREO = "" if PRECIOS_OK.get("correo") else " (estimado)"
+
+
+def corte_correo() -> pd.Timestamp | None:
+    g = info_correo.get("generado")
+    return pd.Timestamp(g).tz_localize(None) if g is not None and pd.notna(g) else None
+
+
+def correo_en_periodo(datos: pd.DataFrame) -> pd.DataFrame:
+    """Con fecha de envío se filtra por el periodo consultado; sin ella, es todo el acumulado del reporte."""
+    if info_correo.get("con_fecha"):
+        return datos[(datos["fecha"] >= inicio) & (datos["fecha"] <= fin)]
+    return datos
+
+
+def estado_correo(unidad: str | None = None) -> dict:
+    datos = correo if unidad is None else correo[correo["unidad"] == unidad]
+    if info_correo.get("con_fecha"):
+        datos = datos[datos["fecha"] <= fin]
+    usado = float(datos["creditos"].sum())
+    if unidad is None:
+        hasta = fin if info_correo.get("con_fecha") else pd.Timestamp(date.today())
+        disponible = sum(float(c.get("creditos") or 0) for c in CFG_CORREO["compras"]
+                         if not c.get("fecha") or pd.Timestamp(c["fecha"]) <= hasta)
+    else:
+        disponible = float(CFG_CORREO["unidades"].get(unidad, 0))
+    uso = usado / disponible if disponible > 0 else None
+    estado = L.estado_consumo(uso * 100 if uso is not None else None, amarillo_pct, rojo_pct)
+    return {"titulo": "Correo (total)" if unidad is None else punto_unidad(unidad) + NOMBRE_UNIDAD_APP[unidad],
+            "usado": usado, "disponible": disponible, "restan": disponible - usado, "uso": uso, "estado": estado,
+            "envios": float(datos["envios"].sum()), "usd": usd_correo(usado),
+            "usd_disponible": usd_correo(disponible) if disponible else None}
+
+
+def tarjeta_correo(e: dict, etiqueta_disponible: str) -> str:
+    hay = e["disponible"] > 0
+    agot = ("Requiere la fecha de envío en el reporte" if not info_correo.get("con_fecha") else "Ver Proyección")
+    cifras = [
+        ("Usados", num(e["usado"])
+         + (f'<div class="cifra-sub">≈ {txt_usd(e["usd"])}{ESTIMADO_CORREO}</div>' if e.get("usd") is not None else "")),
+        (etiqueta_disponible, num(e["disponible"]) if hay else "Sin definir"),
+        ("Excedido" if e["restan"] < 0 else "Disponibles", num(abs(e["restan"])) if hay else "-"),
+        ("Agotamiento estimado", f'<span class="cifra-sub">{agot}</span>'),
+    ]
+    return tarjeta_semaforo(e["titulo"], e["estado"], e["uso"], cifras, amarillo_pct, rojo_pct, "usado")
+
+
+def aviso_remitentes_pendientes() -> None:
+    pend = L.remitentes_pendientes(correo)
+    if pend.empty or not CTX["admin"]:
+        return
+    lista_r = ", ".join(f"{r.remitente} ({num(r.envios)})" for r in pend.head(6).itertuples())
+    mas = f" y {len(pend) - 6} más" if len(pend) > 6 else ""
+    st.warning(f"**Hay {len(pend)} {'remitente' if len(pend) == 1 else 'remitentes'} de correo sin unidad** "
+               f"({num(pend['envios'].sum())} correos): {lista_r}{mas}. Indica de qué unidad es cada uno, o si no "
+               "es de ninguna, en Correo → Remitentes. Mientras tanto solo cuentan en el total.",
+               icon=":material/person_search:")
+
+
+def pagina_correo() -> None:
+    ambito = correo if not unidad_sel else correo[correo["unidad"] == unidad_sel]
+    periodo_c = correo_en_periodo(ambito)
+    corte = corte_correo()
+    con_fecha = info_correo.get("con_fecha")
+
+    with tabs_correo["Resumen"]:
+        rango = info_correo.get("rango")
+        if not con_fecha:
+            st.info(
+                "El reporte de correo trae el **total enviado por journey, sin fecha de envío**"
+                + (f" (reporte del {corte:%d/%m/%Y})" if corte is not None else "")
+                + ". Por eso aquí todo es acumulado, el «Periodo a consultar» no aplica y no hay gráficas por semana "
+                  "ni fecha de agotamiento. Cuando el reporte traiga la columna **Send Date**, se activan solas.",
+                icon=":material/event_busy:")
+        aviso_remitentes_pendientes()
+        st.markdown(
+            f'<div class="leyenda"><span class="leyenda-titulo">Estado de los créditos de correo · {nombre_ambito}</span>'
+            f'<span>{insignia("verde")} menos de {amarillo_pct:g} %</span>'
+            f'<span>{insignia("amarillo")} desde {amarillo_pct:g} %</span>'
+            f'<span>{insignia("rojo")} desde {rojo_pct:g} %</span>'
+            f'<span class="leyenda-nota">1 crédito por correo enviado'
+            + (f'; envíos del {rango[0]:%d/%m/%Y} al {corte:%d/%m/%Y}' if rango and corte is not None else "")
+            + '</span></div>', unsafe_allow_html=True)
+        if unidad_sel:
+            tarjetas = [tarjeta_correo(estado_correo(unidad_sel), "Asignados")]
+        else:
+            tarjetas = [tarjeta_correo(estado_correo(), "Adquiridos")] + [
+                tarjeta_correo(estado_correo(u), "Asignados") for u in L.UNIDADES]
+        st.markdown(f'<div class="semaforo">{"".join(tarjetas)}</div>', unsafe_allow_html=True)
+
+        st.markdown("### Envíos" + (f" del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}" if con_fecha else " acumulados"))
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Correos enviados", num(periodo_c["envios"].sum()))
+        c2.metric("Gasto" + ESTIMADO_CORREO, txt_usd(usd_correo(float(periodo_c["creditos"].sum()))),
+                  help=f"Créditos × {txt_precio(precio_correo())} USD por 1.000 créditos.")
+        c3.metric("Journeys", num(periodo_c["journey"].nunique()))
+        c4.metric("Remitentes", num(periodo_c["remitente"].nunique()))
+
+        if periodo_c.empty:
+            st.info("Sin envíos de correo en el periodo.", icon=":material/info:")
+            return
+        if con_fecha:
+            semanal = periodo_c.assign(semana_inicio=periodo_c["fecha"] - pd.to_timedelta(periodo_c["fecha"].dt.weekday, unit="D"))
+            tabla_s = semanal.groupby("semana_inicio", as_index=False)["envios"].sum().sort_values("semana_inicio")
+            tabla_s["semana"] = tabla_s["semana_inicio"].apply(etiqueta_semana)
+            st.markdown("### Correos por semana")
+            grafica_barras(tabla_s, "semana", "envios", orden=list(tabla_s["semana"]), titulo_valor="Correos",
+                           color=COLOR_CANAL["correo"])
+        if not unidad_sel:
+            st.markdown("### Gasto por unidad (USD)")
+            por_u = periodo_c.groupby("unidad", as_index=False)["creditos"].sum()
+            por_u["unidad"] = por_u["unidad"].map(NOMBRE_DESTINO_CORREO)
+            por_u["usd"] = por_u["creditos"].apply(lambda v: usd_correo(v) or 0.0)
+            total_u = float(por_u["usd"].sum()) or 1.0
+            nota(f"Créditos de correo por el precio de 1.000 créditos{ESTIMADO_CORREO}. Total: {txt_usd(total_u)}.")
+            grafica_barras(por_u, "unidad", "usd", horizontal=True, titulo_valor="USD", colores=COLOR_DESTINO_CORREO,
+                           formato=lambda v: f"{txt_usd(v)} · " + pct(float(v) / total_u, 0))
+        st.markdown("### Correos por remitente")
+        por_r = periodo_c.groupby("remitente", as_index=False)["envios"].sum()
+        grafica_barras(por_r, "remitente", "envios", horizontal=True, titulo_valor="Correos",
+                       color=COLOR_CANAL["correo"])
+        st.markdown("### Journeys con más correos")
+        por_j = periodo_c.groupby("journey", as_index=False)["envios"].sum().nlargest(15, "envios")
+        grafica_barras(por_j, "journey", "envios", horizontal=True, titulo_valor="Correos", color=COLOR_CANAL["correo"])
+
+    if "Remitentes" in tabs_correo:
+        with tabs_correo["Remitentes"]:
+            st.markdown("### ¿De qué unidad es cada remitente?")
+            nota("Cada correo se asigna a una unidad según su remitente (Email Sender Name). Elige la unidad de cada "
+                 "uno, o «Ninguna unidad» si no es de un área que manejemos: en ese caso solo cuenta en el total. "
+                 "Si aparece un remitente nuevo en el reporte, queda «Sin asignar» y el tablero avisa hasta que se asigne. "
+                 "Para tener una unidad nueva, créala primero en Todos los canales → Configuración.")
+            por_rem = (correo.groupby("remitente").agg(envios=("envios", "sum"), journeys=("journey", "nunique"))
+                       .reset_index())
+            opciones = [NOMBRE_DESTINO_CORREO[u] for u in L.UNIDADES] + [
+                NOMBRE_DESTINO_CORREO[L.NINGUNA_UNIDAD], NOMBRE_DESTINO_CORREO[L.SIN_ASIGNAR]]
+            actual = CFG_CORREO["remitentes"]
+            por_rem["Unidad"] = por_rem["remitente"].map(
+                lambda r: NOMBRE_DESTINO_CORREO.get(actual.get(r) if actual.get(r) in NOMBRE_DESTINO_CORREO else L.SIN_ASIGNAR))
+            por_rem["_orden"] = (por_rem["Unidad"] != NOMBRE_DESTINO_CORREO[L.SIN_ASIGNAR]).astype(int)
+            por_rem = por_rem.sort_values(["_orden", "envios"], ascending=[True, False]).drop(columns="_orden")
+            editado = st.data_editor(
+                por_rem.rename(columns={"remitente": "Remitente", "envios": "Correos", "journeys": "Journeys"}),
+                key="editor_remitentes", hide_index=True, width="stretch", disabled=["Remitente", "Correos", "Journeys"],
+                column_config={
+                    "Correos": st.column_config.NumberColumn("Correos enviados", format="localized"),
+                    "Unidad": st.column_config.SelectboxColumn("Unidad", options=opciones, required=True, width="medium"),
+                })
+            pendientes = int((editado["Unidad"] == NOMBRE_DESTINO_CORREO[L.SIN_ASIGNAR]).sum())
+            if pendientes:
+                st.caption(f"{pendientes} {'remitente sigue' if pendientes == 1 else 'remitentes siguen'} sin asignar.")
+            if st.button("Guardar remitentes", type="primary", icon=":material/save:"):
+                por_nombre = {v: k for k, v in NOMBRE_DESTINO_CORREO.items()}
+                nuevos = dict(actual)
+                cambios = []
+                for _, r in editado.iterrows():
+                    destino = por_nombre.get(r["Unidad"], L.SIN_ASIGNAR)
+                    if destino == L.SIN_ASIGNAR:
+                        nuevos.pop(r["Remitente"], None)
+                    else:
+                        nuevos[r["Remitente"]] = destino
+                    if actual.get(r["Remitente"]) != nuevos.get(r["Remitente"]):
+                        cambios.append(f"{r['Remitente']} → {r['Unidad']}")
+                L.guardar_correo(RUTA_CONFIG, config, remitentes=nuevos)
+                subir_y_registrar("Asigna remitentes de correo", "; ".join(cambios) or "sin cambios", RUTA_CONFIG)
+                st.session_state.pop("editor_remitentes", None)
+                st.cache_data.clear()
+                st.toast("Remitentes guardados", icon=":material/check:")
+                st.rerun()
+
+    with tabs_correo["Journeys"]:
+        st.markdown("### Journeys de correo")
+        nota("Correos enviados por cada journey y contenido, con su remitente y su unidad"
+             + ("" if con_fecha else ", acumulado del reporte") + ".")
+        buscar = st.text_input("Buscar journey, contenido o remitente", key="buscar_correo")
+        vista = periodo_c.copy()
+        if buscar:
+            b = buscar.lower()
+            vista = vista[vista[["journey", "contenido", "remitente"]].apply(
+                lambda f: b in " ".join(f.astype(str)).lower(), axis=1)]
+        vista = vista.assign(Unidad=vista["unidad"].map(NOMBRE_DESTINO_CORREO),
+                             USD=vista["creditos"].apply(lambda v: usd_correo(v) or 0.0),
+                             Prueba=vista["prueba"].map({True: "Sí", False: ""}))
+        columnas = ["journey", "contenido", "remitente", "Unidad", "envios", "USD", "Prueba"]
+        st.dataframe(vista.sort_values("envios", ascending=False)[columnas], hide_index=True, width="stretch",
+                     height=520, column_config={
+                         "journey": st.column_config.TextColumn("Journey", width="medium"),
+                         "contenido": st.column_config.TextColumn("Contenido", width="medium"),
+                         "remitente": st.column_config.TextColumn("Remitente"),
+                         "envios": st.column_config.NumberColumn("Correos (= créditos)", format="localized"),
+                         "USD": st.column_config.NumberColumn("USD" + ESTIMADO_CORREO, format="%.2f")})
+        st.caption(f"{num(len(vista))} filas · {num(vista['envios'].sum())} correos. Un journey puede aparecer "
+                   "varias veces, una por cada contenido que envió.")
+
+    if "Créditos" in tabs_correo:
+        with tabs_correo["Créditos"]:
+            st.markdown("### Créditos de correo adquiridos")
+            nota("Compras de créditos de correo. Un correo estándar gasta 1 crédito, sin importar el país "
+                 "(Salesforce Message Credits: Email Standard = 1). Si una compra tuvo otro precio, escríbelo en su fila.")
+            compras_c = pd.DataFrame([{"Fecha": pd.to_datetime(c.get("fecha"), errors="coerce"),
+                                       "Créditos": float(c.get("creditos") or 0),
+                                       COL_PRECIO: c.get("precio_usd_1000"), "Nota": c.get("nota", "")}
+                                      for c in CFG_CORREO["compras"]] or
+                                     [{"Fecha": pd.NaT, "Créditos": 0.0, COL_PRECIO: None, "Nota": ""}])
+            compras_ed = st.data_editor(
+                compras_c, key="editor_compras_correo", num_rows="dynamic", hide_index=True, width="stretch",
+                column_config={"Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
+                               "Créditos": st.column_config.NumberColumn("Créditos", min_value=0, format="localized"),
+                               COL_PRECIO: st.column_config.NumberColumn(COL_PRECIO, min_value=0.0, format="%.3f"),
+                               "Nota": st.column_config.TextColumn("Nota", width="large")})
+            adquiridos = float(compras_ed["Créditos"].fillna(0).sum())
+            st.markdown("### Asignación a unidades")
+            nota("Cuántos créditos de correo le corresponden a cada unidad. Es la base del estado de cada unidad.")
+            asig = pd.DataFrame([{"clave": u, "Unidad": NOMBRE_UNIDAD_APP[u],
+                                  "Asignados": CFG_CORREO["unidades"].get(u, 0.0)} for u in L.UNIDADES])
+            asig_ed = st.data_editor(asig, key="editor_asig_correo", hide_index=True, width="stretch",
+                                     disabled=["Unidad"], column_order=["Unidad", "Asignados"],
+                                     column_config={"Asignados": st.column_config.NumberColumn(
+                                         "Créditos asignados", min_value=0, format="localized")})
+            libre = adquiridos - float(asig_ed["Asignados"].fillna(0).sum())
+            if libre < 0:
+                st.error(f"Se asignaron {num(-libre)} créditos más de los adquiridos.", icon=":material/error:")
+            else:
+                st.caption(f"Adquiridos {num(adquiridos)} · sin asignar a unidades {num(libre)} "
+                           "(lo usan los remitentes de «Ninguna unidad» o queda de reserva).")
+            if st.button("Guardar créditos de correo", type="primary", icon=":material/save:"):
+                compras_g = [{"fecha": f"{pd.Timestamp(r['Fecha']):%Y-%m-%d}" if pd.notna(r["Fecha"]) else "",
+                              "creditos": float(r["Créditos"]), "nota": r["Nota"] or "",
+                              **({"precio_usd_1000": float(r[COL_PRECIO])} if pd.notna(r[COL_PRECIO]) and r[COL_PRECIO] else {})}
+                             for _, r in compras_ed.iterrows() if pd.notna(r["Créditos"]) and r["Créditos"] > 0]
+                unidades_g = {r["clave"]: float(r["Asignados"] or 0) for _, r in asig_ed.iterrows()}
+                L.guardar_correo(RUTA_CONFIG, config, compras=compras_g, unidades=unidades_g)
+                subir_y_registrar("Guarda créditos de correo", f"Adquiridos {num(adquiridos)}; asignados " + ", ".join(
+                    f"{NOMBRE_UNIDAD_APP[u]} {num(v)}" for u, v in unidades_g.items()), RUTA_CONFIG)
+                for k in ("editor_compras_correo", "editor_asig_correo"):
+                    st.session_state.pop(k, None)
+                st.cache_data.clear()
+                st.toast("Créditos de correo guardados", icon=":material/check:")
+                st.rerun()
+
+
 def pagina_pendiente(c: str) -> None:
     st.markdown(f"### {NOMBRE_CANAL[c]}")
     st.markdown(f'<div class="semaforo">{tarjeta_pendiente(c)}</div>', unsafe_allow_html=True)
+    if c == "sms":
+        tabla_sms = L.leer_tarifas_sms(CARPETA / "tarifas_sms")
+        co = tabla_sms.loc[tabla_sms["ISO"] == "CO", "Multiplier"]
+        st.markdown(
+            "Para conectar **SMS** falta **el reporte de Marketing Cloud** con los SMS enviados (idealmente con fecha "
+            "y país de destino) y **las compras de créditos** de SMS.\n\n"
+            f"Ya está listo lo demás: el precio (**{txt_precio(PRECIOS.get('sms'))} USD por 1.000 créditos**, "
+            f"0,004888 por crédito) y la tabla de multiplicadores por país de Salesforce (carpeta `tarifas_sms/`): "
+            f"en Colombia cada SMS gasta **{str(float(co.iloc[0])).replace('.', ',') if len(co) else '0,74'} créditos**; "
+            "los países que no están en la tabla se cobran a 80.")
+        if not tabla_sms.empty:
+            with st.expander("Multiplicadores de SMS cargados", icon=":material/table:"):
+                st.dataframe(tabla_sms.drop(columns=["vigente_desde"]), hide_index=True, width="stretch")
+        return
     st.markdown(
         f"Para conectar **{NOMBRE_CANAL[c]}** se necesita:\n"
-        f"1. **El reporte de Marketing Cloud** de {NOMBRE_CANAL[c].lower()}, como el `data.xlsx` de WhatsApp.\n"
-        f"2. **Su tabla de tarifas** (multiplicadores de Salesforce Message Credits para {NOMBRE_CANAL[c].lower()}), "
-        "con su fecha de vigencia.\n"
-        "3. **Sus compras de créditos** y el **precio por 1.000 créditos** (Todos los canales → Configuración).\n\n"
-        "Con eso, este canal tendrá las mismas pestañas que WhatsApp: Resumen, Proyección, Journeys y Detalle, "
-        "separadas por unidad.")
+        f"1. **El reporte de Marketing Cloud** de {NOMBRE_CANAL[c].lower()}.\n"
+        f"2. **Su tabla de tarifas** (multiplicadores de Salesforce Message Credits), con su fecha de vigencia.\n"
+        "3. **Sus compras de créditos** y el **precio por 1.000 créditos** (Todos los canales → Configuración).")
 
 
 if canal == "todos":
     pagina_todos()
+elif canal == "correo" and "correo" in CANALES_CONECTADOS:
+    pagina_correo()
 elif canal not in CANALES_CONECTADOS:
     pagina_pendiente(canal)

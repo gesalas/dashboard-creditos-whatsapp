@@ -26,6 +26,8 @@ En Windows, si `python` no se reconoce, usar `py` en su lugar (`py -m streamlit 
 |---|---|---|
 | `data.xlsx` | Reporte de entregas de WhatsApp exportado de Marketing Cloud. Se usa tal como sale, con las filas de encabezado del reporte. | Cada vez que hay un reporte nuevo |
 | `tarifas/` | Una tabla de tarifas por vigencia, con el nombre de la fecha en que empieza a regir (`2026-11-01.csv`). Columnas `ISO`, `Country`, `Marketing`, `Utility`. La fila `OTHER` se usa para países que no están en la tabla. `notas.json` guarda observaciones por tabla (por ejemplo, si es provisional). | Cada vez que Salesforce publique una tabla nueva |
+| `data_correo.xlsx` | Reporte de correos enviados de Marketing Cloud Intelligence (Email Sender Name, Journey Name, Email Content Name, Email Sends; si trae *Send Date*, mejor). Se usa tal como sale. | Cada vez que hay un reporte nuevo de correo |
+| `tarifas_sms/` | Multiplicadores de SMS por país de Salesforce Message Credits (un CSV por vigencia). Listo para cuando llegue el reporte de SMS. | Cuando Salesforce publique una tabla nueva |
 | `tarifas.csv` | Respaldo: tabla única que solo se usa si no existe la carpeta `tarifas/`. | No hace falta actualizarlo |
 | `config.json` | Compras de créditos con su línea (`compras`), asignación a unidades por línea (`ucp`, `outbound`; los totales y `general` se calculan solos), umbrales del semáforo (`semaforo`) y textos del encabezado (`marca`). Precios por canal (`precios_usd_1000`), unidades y journeys. Se edita desde WhatsApp → Créditos y Todos los canales → Configuración. | Cuando se compren créditos o cambie la asignación |
 | `acceso.json` | Dominio permitido para crear cuentas y lista de correos del **Equipo CRM** (administradores). | Cuando entre o salga alguien del Equipo CRM |
@@ -109,6 +111,19 @@ Antes de pasar el inicio de sesión a la rama publicada: poner los correos del E
 
 En local, sin Secrets, usuarios y bitácora se guardan en la carpeta del proyecto.
 
+## Correo
+
+- **Créditos:** un correo estándar gasta **1 crédito**, sin importar el país (Salesforce Message Credits, Email Standard = 1; los envíos con prioridad o adjuntos cuestan más, pero el reporte no los distingue). **1.000 créditos = 4 USD** (confirmado).
+- **Unidad de cada correo:** se decide por su **remitente** (Email Sender Name), en Correo → **Remitentes**: a cada remitente se le elige una unidad, o «Ninguna unidad» si no es de un área que manejemos (solo cuenta en el total). Ya vienen asignados *Pontificia Universidad Javeriana* → Mercadeo, *Egresados – …* → Egresados y *Donaciones …* → Donaciones. Si un reporte trae un **remitente nuevo**, queda «Sin asignar» y el tablero avisa al Equipo CRM hasta que alguien lo asigne. Para una unidad nueva (por ejemplo, Educación Continua), primero se crea en Todos los canales → Configuración.
+- **Créditos adquiridos y asignados:** en Correo → Créditos (hoy 30.000.000 adquiridos el 01/01/2026, de la captura del dashboard de Marketing Cloud). Las asignaciones por unidad están en 0 hasta que se llenen.
+- **Pestañas:** Resumen (estado del total y de cada unidad, gasto por unidad en USD, correos por remitente, journeys con más correos), Remitentes, Journeys (buscador) y Créditos. Una unidad ve su Resumen y sus Journeys.
+- **Sin fecha de envío:** el reporte actual trae el total por journey, sin fecha. Por eso el correo es **acumulado** (al día en que se exportó el reporte), el «Periodo a consultar» no aplica y no hay gráficas por semana ni fecha de agotamiento. Si el reporte se exporta con la columna **Send Date**, todo eso se activa solo, sin cambiar código.
+- Se guarda en `config.json`, sección `correo` (compras, unidades, remitentes).
+
+## SMS
+
+Aún sin reporte. Ya están el precio (**0,004888 USD por crédito = 4,888 USD por 1.000**, confirmado) y los multiplicadores por país de Salesforce en `tarifas_sms/` (vigentes desde el 1 de noviembre de 2026): **Colombia 0,74 créditos por SMS**; los países que no están en la tabla se cobran a 80. Como en WhatsApp, el multiplicador depende del país de destino y puede cambiar con cada tabla nueva. Para conectarlo falta el reporte de SMS (ideal con fecha y país) y las compras de créditos.
+
 ## Vocabulario
 
 - **Entrega:** mensaje que le llegó a la persona (*deliveries* en el reporte). WhatsApp cobra por entrega, no por envío, así que el tablero habla de entregas.
@@ -131,7 +146,7 @@ En local, sin Secrets, usuarios y bitácora se guardan en la carpeta del proyect
 
 ## Dinero (USD)
 
-- El gasto en dólares se calcula con el **precio por cada 1.000 créditos** de cada canal, que se edita en Todos los canales → Configuración. Salesforce no publica ese valor: sale del contrato o de la orden de compra. WhatsApp: 4,16 USD por cada 1.000 créditos (confirmado).
+- El gasto en dólares se calcula con el **precio por cada 1.000 créditos** de cada canal, que se edita en Todos los canales → Configuración. Salesforce no publica ese valor: sale del contrato o de la orden de compra. Confirmados: **WhatsApp 4,16**, **Correo 4,00** y **SMS 4,888** USD por cada 1.000 créditos. Lo que cambia entre canales es cuántos créditos gasta cada mensaje: WhatsApp según el país y el tipo de plantilla, Correo 1 por correo, SMS según el país.
 - Mientras el precio no esté marcado como *Confirmado*, las cifras en dólares dicen "(estimado)".
 - En WhatsApp → Créditos, cada compra puede llevar su propio precio (columna *Precio por 1.000 (USD)*), si se pagó a otro valor. Cada bolsa usa el promedio de sus compras, ponderado por créditos.
 - Se guarda en `config.json`: `precios_usd_1000`, `precios_confirmados` y, en cada compra, `precio_usd_1000` (opcional).
