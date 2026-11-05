@@ -20,7 +20,7 @@ En Windows, si `python` no se reconoce, usar `py` en su lugar (`py -m streamlit 
 | `data.xlsx` | Reporte de entregas de WhatsApp exportado de Marketing Cloud. Se usa tal como sale, con las filas de encabezado del reporte. | Cada vez que hay un reporte nuevo |
 | `tarifas/` | Una tabla de tarifas por vigencia, con el nombre de la fecha en que empieza a regir (`2026-11-01.csv`). Columnas `ISO`, `Country`, `Marketing`, `Utility`. La fila `OTHER` se usa para países que no están en la tabla. `notas.json` guarda observaciones por tabla (por ejemplo, si es provisional). | Cada vez que Salesforce publique una tabla nueva |
 | `tarifas.csv` | Respaldo: tabla única que solo se usa si no existe la carpeta `tarifas/`. | No hace falta actualizarlo |
-| `config.json` | Compras de créditos con su línea (`compras`), asignación a unidades por línea (`ucp`, `outbound`; los totales y `general` se calculan solos), umbrales del semáforo (`semaforo`) y textos del encabezado (`marca`). Se edita desde la pestaña Configuración. | Cuando se compren créditos o cambie la asignación |
+| `config.json` | Compras de créditos con su línea (`compras`), asignación a unidades por línea (`ucp`, `outbound`; los totales y `general` se calculan solos), umbrales del semáforo (`semaforo`) y textos del encabezado (`marca`). Precios por canal (`precios_usd_1000`), unidades y journeys. Se edita desde WhatsApp → Créditos y Todos los canales → Configuración. | Cuando se compren créditos o cambie la asignación |
 | `logica.py` | Todos los cálculos. No depende de Streamlit. | Desarrollo |
 | `app.py` | La interfaz: filtros, pestañas y gráficas. | Desarrollo |
 | `.streamlit/config.toml` | Colores y tema del dashboard. | Desarrollo |
@@ -55,17 +55,32 @@ Tablas cargadas hoy: 01/12/2025, 01/05/2026, 01/08/2026 y 01/11/2026. Las de may
 - **Créditos adquiridos:** los comprados para una línea. UCP y Outbound son bolsas separadas: cada compra es para una sola línea y sus créditos no se pueden usar en la otra. Hoy la tarifa por país es la misma en las dos.
 - **Créditos asignados:** la parte de los créditos de una línea que le corresponde a una unidad.
 
-## Vistas
+## Organización: unidad, canal y secciones
 
-La barra lateral tiene dos selectores que se combinan:
+- **Barra lateral:** *Vista* (Equipo CRM o una unidad) y *Periodo a consultar*. Aplican a todo el tablero.
+- **Canal**, arriba: **Todos los canales**, **WhatsApp**, **Correo** y **SMS**. Cada canal tiene su propia bolsa de créditos y sus propias tarifas. Correo y SMS aparecen como "Sin conectar" hasta que se agreguen su reporte, su tabla de tarifas y sus compras. El enlace puede abrir un canal directo: `?canal=whatsapp`, `?canal=todos` (se combina con `?unidad=...`).
+- **Dentro de WhatsApp:**
+  - La **línea** (Ambas líneas, UCP vs Outbound, UCP u Outbound) se elige justo debajo del canal.
+  - Las secciones son Resumen, Proyección, Journeys y Detalle; en la vista Equipo CRM, además, Unidades y Créditos (compras por línea y asignación a unidades).
+- **Todos los canales:** compara los canales en lo que sí se puede sumar.
+  - *Gasto en dólares:* barra dividida por canal sobre lo comprado (o asignado a la unidad).
+  - *Entregas:* cómo se reparten los mensajes entregados entre canales.
+  - Una tarjeta por canal, gráficas de gasto y de entregas por semana y, para el Equipo CRM, una tabla por unidad.
+  - En la vista Equipo CRM tiene una pestaña **Configuración** con el precio de los créditos de cada canal, las unidades y la asignación de journeys.
+- **Vista de una unidad:** Mercadeo (o la que sea) ve solo lo suyo en cada canal y en Todos los canales. Cada unidad tiene un enlace directo con `?unidad=mercadeo`, que usa también su correo de alertas.
 
-- **Vista:** *Equipo CRM* ve todas las unidades, con las pestañas Unidades y Configuración. Al elegir **Mercadeo**, **Egresados** o **Donaciones**, todo el tablero muestra solo esa unidad: su estado, su resumen, sus gráficas, sus journeys, su proyección y su detalle (las pestañas Unidades y Configuración no aparecen). Cada unidad tiene un enlace directo: la dirección del dashboard con `?unidad=mercadeo`, `?unidad=egresados` o `?unidad=donaciones`; el correo de cada unidad usa ese enlace.
-- **Línea de WhatsApp:**
-  - *Ambas líneas (total):* tres tarjetas (total, UCP y Outbound) con un botón para ver el detalle de cada línea o compararlas.
-  - *UCP vs Outbound (comparar):* las dos líneas lado a lado: tarjetas de estado, consumo del periodo y gráficas de Marketing y de Utility, cada línea en su columna y con la misma escala para que las barras se puedan comparar. La proyección también se muestra por línea.
-  - *UCP* u *Outbound:* una tarjeta grande con más información (Marketing y Utility, últimos 7 días frente a los 7 anteriores, estimado de la próxima semana) y, al lado, el estado de cada unidad en esa línea (en la vista Equipo CRM) o el de la unidad en cada línea (en la vista de una unidad).
+## Dinero (USD)
 
-Las pestañas van arriba, justo debajo del título. Las tarjetas de estado están al inicio de la pestaña Resumen.
+- El gasto en dólares se calcula con el **precio por cada 1.000 créditos** de cada canal, que se edita en Todos los canales → Configuración. Salesforce no publica ese valor: sale del contrato o de la orden de compra. Hoy WhatsApp está en 4 USD como valor aproximado.
+- Mientras el precio no esté marcado como *Confirmado*, las cifras en dólares dicen "(estimado)".
+- En WhatsApp → Créditos, cada compra puede llevar su propio precio (columna *Precio por 1.000 (USD)*), si se pagó a otro valor. Cada bolsa usa el promedio de sus compras, ponderado por créditos.
+- Se guarda en `config.json`: `precios_usd_1000`, `precios_confirmados` y, en cada compra, `precio_usd_1000` (opcional).
+
+## Efecto de los cambios de tarifa
+
+- En las gráficas por semana y por mes, una **línea punteada** marca el día en que empezó a regir cada tabla de tarifas.
+- En el Resumen, el recuadro *Efecto de los cambios de tarifa* compara, desde cada cambio, lo que se cobró con lo que habrían costado **las mismas entregas** con la tabla anterior. La diferencia es lo que subió o bajó solo por la tarifa; el resto de la variación se debe a cuántas entregas hubo.
+- Las proyecciones siempre usan la tabla vigente en cada día proyectado, es decir, la más reciente.
 
 ## Semáforo de consumo
 
@@ -100,7 +115,7 @@ El encabezado de la barra lateral muestra el nombre de la institución y del ár
   - si es futuro, un **estimado**: lo real más lo que se usaría hasta ese día al ritmo de los últimos 28 días, con la tarifa vigente cada día. La tarjeta lo indica ("estimado al 31/12/2026").
   - La fecha de agotamiento siempre se calcula desde el saldo real de hoy.
 - **Qué más cambia con el periodo:** *Usados en el periodo* (cuando el periodo no empieza en el primer dato), Marketing y Utility, el consumo del periodo, las gráficas, los journeys y el detalle. Las gráficas solo muestran datos reales.
-- **Créditos (pestaña Configuración, vista Equipo CRM):**
+- **Créditos (WhatsApp → Créditos, vista Equipo CRM):**
   - *Créditos adquiridos:* lista de compras con fecha, **línea**, créditos y nota. Lo adquirido por cada línea es la suma de sus compras; el total de ambas líneas es UCP + Outbound. Para registrar una compra se agrega una fila al final.
   - *Asignación a unidades:* cuántos créditos de cada línea le corresponden a cada unidad. Es la base del estado de cada unidad, de su vista y de sus alertas.
   - Un resumen muestra lo adquirido, lo asignado y lo que queda *sin asignar a unidades* en cada línea; si se asignó de más, aparece en rojo.
@@ -113,7 +128,7 @@ Marketing se identifica siempre en azul y Utility en naranja: en las cajas de ci
 
 ## Unidades y journeys
 
-En la pestaña Configuración (vista Equipo CRM), sin tocar el código:
+En Todos los canales → Configuración (vista Equipo CRM), sin tocar el código:
 
 - **Unidades:** se agregan en la última fila de la tabla, se renombran escribiendo encima y se quitan seleccionando la fila y borrándola. Cada unidad tiene:
   - *Prefijos de journeys:* un journey cuyo nombre empieza por ese texto queda en esa unidad (por ejemplo, `EGRES` para `EGRES_BIENVENIDA`). Pueden ser varios, separados por coma, o ninguno.
@@ -124,18 +139,20 @@ En la pestaña Configuración (vista Equipo CRM), sin tocar el código:
 
 ## Pestañas
 
-Orden: Resumen, Proyección, Unidades (solo Equipo CRM), Journeys, Detalle y Configuración (solo Equipo CRM).
+Orden en WhatsApp: Resumen, Proyección, Unidades (solo Equipo CRM), Journeys, Detalle y Créditos (solo Equipo CRM).
 
 - **Resumen**: estado de los créditos, consumo del periodo (total, Marketing y Utility) y gráficas por semana, por mes, por país y (en la vista Equipo CRM) por unidad.
 - **Unidades** (solo Equipo CRM): estado de cada unidad, comparativo en tabla y gráficas, y un botón para abrir la vista de cada unidad.
 - **Journeys**: clasificación de journeys y los 15 con mayor consumo, separados en Marketing y Utility; al elegir journeys, su detalle y su proyección.
-- **Proyección**: para lo que se esté viendo (una unidad, una línea o ambas):
+- **Proyección**: tiene dos modos.
+  - **Eligiendo journeys:** una tabla con los journeys del periodo de referencia, su ritmo (entregas y créditos por semana), su último uso y una casilla *Incluir*. Vienen marcados los que siguen en uso: con entregas en los últimos 14 días y en más de un día; los de un solo uso quedan por fuera. Se pueden marcar o desmarcar, y agregar **journeys nuevos o de reemplazo** con sus entregas por semana, país, tipo y línea. Muestra la próxima semana, el consumo hasta una fecha y la fecha de agotamiento del escenario, comparados con los de todos los journeys.
+  - **Con el ritmo actual**, para lo que se esté viendo (una unidad, una línea o ambas):
   - *Proyectar con el ritmo de:* los últimos 7, 14, 28 (por defecto), 56 o 90 días con datos, el periodo consultado o **fechas personalizadas** (por ejemplo, el ritmo de un evento o campaña anterior).
   - *Proyectar hasta:* una fecha futura (por ejemplo, la de un evento). Muestra los créditos y entregas estimados hasta ese día y el saldo que quedaría, o cuántos créditos faltarían.
   - Créditos y entregas estimados de la próxima semana y fecha de agotamiento.
   - Qué tabla de tarifas se usa (la vigente cada día proyectado).
 - **Detalle**: las filas del reporte del periodo consultado con los cálculos, descargables en CSV.
-- **Configuración** (solo Equipo CRM): compras por línea, asignación de créditos a unidades, unidades y journeys, y dónde cambiar los demás ajustes.
+- **Créditos** (solo Equipo CRM): compras por línea (con precio opcional), asignación de créditos a unidades y dónde cambiar los demás ajustes. Las unidades, los journeys y los precios por canal están en Todos los canales → Configuración.
 
 ## Actualización automática de data.xlsx desde el correo
 
@@ -146,7 +163,7 @@ Orden: Resumen, Proyección, Unidades (solo Equipo CRM), Journeys, Detalle y Con
    ```json
    {
      "buzon": "",
-     "carpeta": "",
+     "carpeta": "Reportes_Datorama",
      "asunto_contiene": "Marketing Report: Data",
      "remitente_contiene": "",
      "adjunto_contiene": "Data-",
@@ -157,7 +174,7 @@ Orden: Resumen, Proyección, Unidades (solo Equipo CRM), Journeys, Detalle y Con
    ```
 
    - `buzon`: si el correo llega a otra cuenta o buzón compartido que está en el mismo Outlook, parte de su nombre o correo. Vacío = la cuenta principal.
-   - `carpeta`: si una regla de Outlook mueve el correo a una carpeta, su ruta dentro de la bandeja de entrada (por ejemplo `Reportes/WhatsApp`). Vacío = la bandeja de entrada.
+   - `carpeta`: carpeta de Outlook donde llega el reporte (hoy `Reportes_Datorama`). Se busca sin distinguir mayúsculas, dentro de la bandeja de entrada o en cualquier otra parte del buzón. También acepta una ruta (`Reportes/WhatsApp`). Vacío = la bandeja de entrada.
    - `asunto_contiene`, `remitente_contiene`, `adjunto_contiene`: textos para reconocer el correo y el adjunto (sin distinguir mayúsculas).
    - `publicar_en_github`: `true` para hacer commit y push de `data.xlsx` después de actualizarlo. Requiere que la carpeta sea el repositorio clonado (con VS Code o GitHub Desktop) y que git ya tenga guardado el inicio de sesión de GitHub.
 2. **Probar:** `py actualizar_datos.py --simular` muestra qué correo encontraría y qué haría, sin cambiar nada. Luego `py actualizar_datos.py`. Lo que pasa queda en `actualizar_datos.log`.

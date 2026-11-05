@@ -478,12 +478,16 @@ def main(argv: list[str] | None = None) -> int:
 
     def informe(unidad: str, motivo: str, vista_previa: bool = False) -> tuple[str, str, str]:
         logo_src = (logo_data_uri(logo) if vista_previa else f"cid:{CID_LOGO}") if logo else None
+        asignado_lineas = {l: L.config_linea(config, l)["unidades"][unidad] for l in L.LINEAS_COMPRA}
         return I.informe_unidad(unidad, envios, tarifas, asignado[unidad], amarillo, rojo, info, motivo,
-                                plantilla, logo_src)
+                                plantilla, logo_src, asignado_lineas)
 
     def informe_general(pend: list[dict], aviso: str | None, vista_previa: bool = False) -> tuple[str, str, str]:
         logo_src = (logo_data_uri(logo) if vista_previa else f"cid:{CID_LOGO}") if logo else None
-        return I.informe_general(ambitos, pend, aviso, info, amarillo, rojo, plantilla, logo_src)
+        detalle = {u: {l: (float(envios.loc[(envios["unidad"] == u) & (envios["linea"] == l), "creditos"].sum()),
+                           L.config_linea(config, l)["unidades"][u]) for l in L.LINEAS_COMPRA}
+                   for u in L.UNIDADES}
+        return I.informe_general(ambitos, pend, aviso, info, amarillo, rojo, plantilla, logo_src, detalle)
 
     # ---- Vista previa: un HTML por unidad, sin enviar ni guardar estado
     if args.vista_previa:

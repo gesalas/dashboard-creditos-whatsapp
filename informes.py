@@ -83,7 +83,7 @@ def _tabla_datos(filas: list[tuple[str, str]]) -> str:
         f'<td style="padding:6px 12px; border:1px solid {BORDE}; text-align:right;">{v}</td></tr>'
         for e, v in filas)
     return (f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:4px 0 16px 0; '
-            f'font-family:{FUENTE}; font-size:11pt; color:{TEXTO}; min-width:360px;">{cuerpo}</table>')
+            f'font-family:{FUENTE}; font-size:11pt; color:{TEXTO}; width:440px; max-width:100%;">{cuerpo}</table>')
 
 
 def _tabla(encabezados: list[str], filas: list[list[str]], derecha: set[int]) -> str:
@@ -99,6 +99,96 @@ def _tabla(encabezados: list[str], filas: list[list[str]], derecha: set[int]) ->
         for fila in filas)
     return (f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:4px 0 16px 0; '
             f'font-family:{FUENTE}; font-size:11pt; color:{TEXTO};"><tr>{th}</tr>{cuerpo}</table>')
+
+
+def _titulo_seccion(texto: str) -> str:
+    """Título de sección (por ejemplo, el canal): azul institucional con una línea debajo."""
+    return (f'<p style="margin:22px 0 8px 0; padding-bottom:4px; border-bottom:2px solid {AZUL}; color:{AZUL}; '
+            f'font-size:12.5pt; font-weight:bold;">{escape(texto)}</p>')
+
+
+def _subtitulo(texto: str) -> str:
+    return f'<p style="margin:14px 0 4px 0; font-weight:bold; color:{TEXTO};">{escape(texto)}</p>'
+
+
+def filas_saldo(consumido: float, disponible: float, etiqueta: str, uso_pct: float | None = None,
+                estado: str | None = None) -> list[tuple[str, str]]:
+    """Filas de una tablita de estado. Si se usó más de lo disponible, los disponibles son 0 y aparte se
+    muestra cuánto se usó de más (lo que hay que reponer); nunca un saldo negativo."""
+    filas = []
+    if estado:
+        filas.append(("Estado", _estado_html(estado)))
+    filas.append((etiqueta, num(disponible) if disponible > 0 else "Sin asignar"))
+    uso_txt = f" ({pct(uso_pct)})" if uso_pct is not None else ""
+    filas.append(("Créditos utilizados", num(consumido) + uso_txt))
+    if disponible > 0:
+        restan = disponible - consumido
+        filas.append(("Créditos disponibles", num(max(restan, 0))))
+        if restan < 0:
+            filas.append(("Utilizados de más (por reponer)", f'<b style="color:{ESTADOS["rojo"]["color"]};">'
+                                                             f'{num(-restan)}</b>'))
+    return filas
+
+
+def columna_saldo(consumido: float, disponible: float, amarillo_pct: float, rojo_pct: float) -> dict[str, str]:
+    """Valores de una columna (Total, UCP u Outbound) para las tablas por columnas del correo del equipo."""
+    uso = consumido / disponible * 100 if disponible > 0 else None
+    estado = L.estado_consumo(uso, amarillo_pct, rojo_pct)
+    restan = disponible - consumido
+    return {
+        "estado": _estado_html(estado) if disponible > 0 else ("Sin asignar" if consumido > 0 else "-"),
+        "disponible": num(disponible) if disponible > 0 else "-",
+        "utilizados": num(consumido) + (f"<br><span style='color:{GRIS}; font-size:9.5pt;'>{pct(uso)}</span>"
+                                        if uso is not None else ""),
+        "libres": num(max(restan, 0)) if disponible > 0 else "-",
+        "de_mas": (f'<b style="color:{ESTADOS["rojo"]["color"]};">{num(-restan)}</b>'
+                   if disponible > 0 and restan < 0 else ("-" if disponible > 0 or consumido <= 0 else num(consumido))),
+    }
+
+
+def tabla_columnas(columnas: dict[str, dict[str, str]], etiqueta_disponible: str) -> str:
+    """Tabla compacta: una fila por dato y una columna por ámbito (Total, UCP, Outbound)."""
+    filas = [("Estado", "estado"), (etiqueta_disponible, "disponible"), ("Créditos utilizados", "utilizados"),
+             ("Créditos disponibles", "libres")]
+    if any(c["de_mas"] not in ("-",) for c in columnas.values()):
+        filas.append(("Utilizados de más (por reponer)", "de_mas"))
+    celda = f"padding:6px 10px; border:1px solid {BORDE};"
+    ancho = f"{60 / max(len(columnas), 1):.0f}%"
+    th = f'<th style="{celda} background:{FONDO_ENCABEZADO}; width:40%;"></th>' + "".join(
+        f'<th style="{celda} background:{FONDO_ENCABEZADO}; text-align:right; font-weight:bold; width:{ancho};">'
+        f'{escape(n)}</th>' for n in columnas)
+    cuerpo = "".join(
+        f'<tr><td style="{celda} background:{FONDO_ENCABEZADO};">{escape(etq)}</td>'
+        + "".join(f'<td style="{celda} text-align:right;">{c[clave]}</td>' for c in columnas.values()) + "</tr>"
+        for etq, clave in filas)
+    return (f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:4px 0 16px 0; '
+            f'font-family:{FUENTE}; font-size:10.5pt; color:{TEXTO}; width:100%; max-width:640px; '
+            f'table-layout:fixed;">'
+            f'<tr>{th}</tr>{cuerpo}</table>')
+
+
+def _texto_columnas(titulo: str, columnas: dict[str, dict[str, str]]) -> list[str]:
+    lineas = [f"{titulo}:"]
+    for nombre, c in columnas.items():
+        partes = [f"{k}: {v}" for k, v in (("asignados/adquiridos", c["disponible"]), ("utilizados", c["utilizados"]),
+                                           ("disponibles", c["libres"]), ("de más", c["de_mas"])) if v != "-"]
+        texto = "; ".join(partes)
+        for etiqueta in ("<br>", "</span>", "</b>"):
+            texto = texto.replace(etiqueta, " " if etiqueta == "<br>" else "")
+        while "<" in texto:
+            texto = texto[:texto.index("<")] + texto[texto.index(">") + 1:]
+        lineas.append(f"- {nombre}: {texto}")
+    return lineas
+
+
+def _texto_filas(filas: list[tuple[str, str]]) -> list[str]:
+    limpio = []
+    for e, v in filas:
+        v = v.replace("</b>", "")
+        while "<b" in v:
+            v = v[:v.index("<b")] + v[v.index(">", v.index("<b")) + 1:]
+        limpio.append(f"- {e}: {v}")
+    return limpio
 
 
 def _estado_html(estado: str) -> str:
@@ -174,9 +264,13 @@ def _fecha_corte(info: dict) -> str:
 # Informe de una unidad
 # ---------------------------------------------------------------------------
 
+TOP_JOURNEYS = 10   # journeys con mayor consumo que se muestran en el correo de cada unidad
+
+
 def informe_unidad(unidad: str, envios: pd.DataFrame, tarifas: pd.DataFrame, asignado: float,
                    amarillo_pct: float, rojo_pct: float, info: dict, motivo: str,
-                   plantilla: dict | None = None, logo_src: str | None = None) -> tuple[str, str, str]:
+                   plantilla: dict | None = None, logo_src: str | None = None,
+                   asignado_lineas: dict[str, float] | None = None) -> tuple[str, str, str]:
     """Asunto, texto plano y HTML del correo para los responsables de una unidad.
 
     `motivo`: "alerta" (cruzó un umbral) o "resumen" (resumen periódico).
@@ -248,23 +342,26 @@ def informe_unidad(unidad: str, envios: pd.DataFrame, tarifas: pd.DataFrame, asi
         intro = (f"Te escribimos desde el Equipo CRM de la Dirección de Tecnologías de Información para informarte "
                  f"el estado de los créditos de WhatsApp asignados a <b>{escape(nombre)}</b>, con corte al {corte}.")
 
-    filas = [
-        ("Estado", _estado_html(estado)),
-        ("Créditos asignados", num(asignado) if asignado > 0 else "Sin asignar"),
-        ("Créditos utilizados", f"{num(consumido)} ({uso_txt})" if uso is not None else num(consumido)),
-        ("Créditos disponibles" if restan >= 0 or asignado <= 0 else "Créditos utilizados de más",
-         num(abs(restan)) if asignado > 0 else "-"),
+    filas = filas_saldo(consumido, asignado, "Créditos asignados", uso, estado) + [
         ("Consumo de los últimos 7 días", num(ult7)),
         ("Consumo estimado de la próxima semana", semana_txt),
         ("Fecha estimada de agotamiento", escape(agotamiento_txt)),
     ]
+
+    # Cada línea de WhatsApp por separado (UCP y Outbound son bolsas distintas)
+    cols_linea = {}
+    if asignado_lineas:
+        cols_linea["Total"] = columna_saldo(consumido, asignado, amarillo_pct, rojo_pct)
+        for nombre_l, asignado_l in asignado_lineas.items():
+            consumido_l = float(datos.loc[datos["linea"] == nombre_l, "creditos"].sum())
+            cols_linea[nombre_l] = columna_saldo(consumido_l, asignado_l, amarillo_pct, rojo_pct)
 
     filas_journey = []
     if not datos.empty:
         fin = datos["fecha"].max()
         recientes = datos[datos["fecha"] > fin - pd.Timedelta(days=28)]
         top = (recientes.groupby("journey", as_index=False)[["deliveries", "creditos"]].sum()
-                        .nlargest(3, "creditos"))
+                        .nlargest(TOP_JOURNEYS, "creditos"))
         filas_journey = [[r.journey.strip(), num(r.deliveries), num(r.creditos)] for r in top.itertuples()]
 
     if motivo == "resumen":
@@ -280,10 +377,14 @@ def informe_unidad(unidad: str, envios: pd.DataFrame, tarifas: pd.DataFrame, asi
         _p("Hola,")
         + _p(intro)
         + _p(f"A la fecha de corte, {escape(situacion)}.")
+        + _titulo_seccion("WhatsApp")
+        + _subtitulo("Total (ambas líneas)")
         + _tabla_datos(filas)
         + (_p(escape(frase_semana)) if frase_semana else "")
+        + ((_subtitulo("Por línea (UCP y Outbound son bolsas separadas)")
+            + tabla_columnas(cols_linea, "Créditos asignados")) if cols_linea else "")
         + _p(f"<b>Recomendación:</b> {escape(recomendacion)}")
-        + ((_p("Estos son los journeys con mayor consumo de la unidad en los últimos 28 días:")
+        + ((_p(f"Estos son los {len(filas_journey)} journeys con mayor consumo de la unidad en los últimos 28 días:")
             + _tabla(["Journey", "Entregas", "Créditos"], filas_journey, {1, 2})) if filas_journey else "")
         + _bloque_enlace(plantilla, unidad)
         + _bloque_contacto(plantilla)
@@ -294,14 +395,14 @@ def informe_unidad(unidad: str, envios: pd.DataFrame, tarifas: pd.DataFrame, asi
     f = plantilla["firma"]
     texto = ["Hola,", "", intro.replace("<b>", "").replace("</b>", ""), "",
              f"A la fecha de corte, {situacion}.", ""]
-    for e, v in filas:
-        limpio = v.replace(f'<b style="color:{ESTADOS[estado]["color"]};">', "").replace("</b>", "")
-        texto.append(f"- {e}: {limpio}")
+    texto += ["WhatsApp - Total (ambas líneas):"] + _texto_filas(filas)
     if frase_semana:
         texto += ["", frase_semana]
+    if cols_linea:
+        texto += [""] + _texto_columnas("WhatsApp por línea", cols_linea)
     texto += ["", f"Recomendación: {recomendacion}"]
     if filas_journey:
-        texto += ["", "Journeys con mayor consumo en los últimos 28 días:"]
+        texto += ["", f"Los {len(filas_journey)} journeys con mayor consumo en los últimos 28 días:"]
         texto += [f"- {j}: {cr} créditos ({d} entregas)" for j, d, cr in filas_journey]
     if plantilla.get("url_dashboard"):
         texto += ["", f"Dashboard: {url_dashboard(plantilla, unidad)}"]
@@ -319,7 +420,8 @@ def informe_unidad(unidad: str, envios: pd.DataFrame, tarifas: pd.DataFrame, asi
 
 def informe_general(ambitos: list[dict], pendientes: list[dict], aviso_reporte: str | None, info: dict,
                     amarillo_pct: float, rojo_pct: float, plantilla: dict | None = None,
-                    logo_src: str | None = None) -> tuple[str, str, str]:
+                    logo_src: str | None = None,
+                    detalle_unidades: dict[str, dict[str, tuple[float, float]]] | None = None) -> tuple[str, str, str]:
     """Correo al equipo CRM con las alertas nuevas y el estado de todas las líneas y unidades."""
     plantilla = plantilla or plantilla_desde_config({})
     corte = _fecha_corte(info)
@@ -332,13 +434,22 @@ def informe_general(ambitos: list[dict], pendientes: list[dict], aviso_reporte: 
     else:
         asunto = f"Créditos de WhatsApp: el reporte de consumo no se ha actualizado (corte {corte})"
 
-    def fila(a: dict) -> list[str]:
-        estado = L.estado_consumo(a["uso_pct"], amarillo_pct, rojo_pct)
-        restan = a["disponible"] - a["consumido"]
-        return [a["nombre"], ESTADOS[estado]["etiqueta"],
-                pct(a["uso_pct"]) if a["uso_pct"] is not None else "-",
-                num(a["consumido"]), num(a["disponible"]) if a["disponible"] > 0 else "Sin asignar",
-                (num(restan) if restan >= 0 else f"-{num(-restan)}") if a["disponible"] > 0 else "-"]
+    def col(a_consumido: float, a_disponible: float) -> dict[str, str]:
+        return columna_saldo(a_consumido, a_disponible, amarillo_pct, rojo_pct)
+
+    # Líneas: una sola tabla con columnas Total, UCP y Outbound
+    nombres_linea = {"Total (ambas líneas)": "Total", "Línea UCP": "UCP", "Línea Outbound": "Outbound"}
+    cols_lineas = {nombres_linea.get(a["nombre"], a["nombre"]): col(a["consumido"], a["disponible"])
+                   for a in ambitos if a["tipo"] == "linea"}
+    # Unidades: una tabla por unidad, con su total y su detalle en cada línea
+    tablas_unidades = []
+    for a in ambitos:
+        if a["tipo"] != "unidad":
+            continue
+        columnas = {"Total": col(a["consumido"], a["disponible"])}
+        for nombre_l, (cons_l, asig_l) in ((detalle_unidades or {}).get(a.get("unidad"), {}) or {}).items():
+            columnas[nombre_l] = col(cons_l, asig_l)
+        tablas_unidades.append((a["nombre"].replace("Unidad ", "", 1), columnas))
 
     lineas_alerta = [f"{a['nombre']}: {pct(a['uso_pct'])} utilizado (umbral de {a['umbral']:g} %)"
                      for a in pendientes]
@@ -349,10 +460,15 @@ def informe_general(ambitos: list[dict], pendientes: list[dict], aviso_reporte: 
             f"<li style=\"margin:0 0 4px 0;\">{escape(t)}</li>" for t in lineas_alerta) + "</ul>"
     if aviso_reporte:
         cuerpo += _p(f"<b>Reporte desactualizado:</b> {escape(aviso_reporte)}")
-    cuerpo += _p("Estado actual de los créditos (las líneas frente a los créditos adquiridos; las unidades, frente "
-                 "a los asignados):")
-    cuerpo += _tabla(["Ámbito", "Estado", "Uso", "Utilizados", "Adquiridos o asignados", "Disponibles"],
-                     [fila(a) for a in ambitos], {2, 3, 4, 5})
+    cuerpo += _p("Este es el estado actual de los créditos: las líneas frente a los créditos adquiridos y las "
+                 "unidades frente a los asignados.")
+    cuerpo += _titulo_seccion("WhatsApp")
+    if cols_lineas:
+        cuerpo += _subtitulo("Líneas") + tabla_columnas(cols_lineas, "Créditos adquiridos")
+    if tablas_unidades:
+        cuerpo += _p("<b>Por unidad</b>, con lo que usó en cada línea (UCP y Outbound son bolsas separadas):",
+                     f"margin:20px 0 4px 0; color:{AZUL};")
+        cuerpo += "".join(_subtitulo(t) + tabla_columnas(c, "Créditos asignados") for t, c in tablas_unidades)
     detalle = []
     if info.get("generado"):
         detalle.append(f"reporte de Marketing Cloud generado el {info['generado']} (UTC)")
@@ -371,8 +487,11 @@ def informe_general(ambitos: list[dict], pendientes: list[dict], aviso_reporte: 
         texto += [f"- {t}" for t in lineas_alerta] + [""]
     if aviso_reporte:
         texto += [f"Reporte desactualizado: {aviso_reporte}", ""]
-    texto += ["Estado actual de los créditos:"]
-    texto += [f"- {r[0]}: {r[1]}, {r[2]} ({r[3]} de {r[4]})" for r in (fila(a) for a in ambitos)]
+    texto += ["Estado actual de los créditos de WhatsApp:"]
+    if cols_lineas:
+        texto += [""] + _texto_columnas("Líneas", cols_lineas)
+    for t, c in tablas_unidades:
+        texto += [""] + _texto_columnas(t, c)
     if plantilla.get("url_dashboard"):
         texto += ["", f"Dashboard: {plantilla['url_dashboard']}"]
     return asunto, "\n".join(texto), html

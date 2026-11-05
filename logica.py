@@ -17,6 +17,7 @@ Archivos de entrada (en la carpeta del repositorio):
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -101,7 +102,10 @@ def leer_reporte(ruta: Path) -> tuple[pd.DataFrame, str | None]:
 
     Devuelve el dataframe y la fecha de generación del reporte (si viene).
     """
-    crudo = pd.read_excel(ruta, header=None)
+    with warnings.catch_warnings():
+        # El Excel de Marketing Cloud no trae estilo por defecto y openpyxl avisa; no afecta los datos.
+        warnings.filterwarnings("ignore", message="Workbook contains no default style")
+        crudo = pd.read_excel(ruta, header=None)
 
     fila_encabezado = None
     fecha_generacion = None
@@ -236,9 +240,14 @@ def guardar_creditos(ruta: Path, config: dict, unidades: dict[str, dict[str, flo
     """
     nuevo = dict(config)
     if compras is not None:
-        nuevo["compras"] = [{"fecha": str(c.get("fecha") or "")[:10], "linea": str(c.get("linea") or ""),
-                             "creditos": round(float(c.get("creditos") or 0)), "nota": str(c.get("nota") or "")}
-                            for c in compras]
+        nuevo["compras"] = []
+        for c in compras:
+            fila = {"fecha": str(c.get("fecha") or "")[:10], "linea": str(c.get("linea") or ""),
+                    "creditos": round(float(c.get("creditos") or 0)), "nota": str(c.get("nota") or "")}
+            precio = c.get("precio_usd_1000")
+            if precio is not None and not pd.isna(precio) and float(precio) > 0:
+                fila["precio_usd_1000"] = float(precio)   # precio propio de esa compra (opcional)
+            nuevo["compras"].append(fila)
     for linea in LINEAS_COMPRA:
         clave = CLAVE_CONFIG_LINEA[linea]
         anterior = config_linea(nuevo, linea)
@@ -258,7 +267,8 @@ def guardar_creditos(ruta: Path, config: dict, unidades: dict[str, dict[str, flo
 
 def escribir_config(ruta: Path, nuevo: dict) -> None:
     """Escribe config.json de forma legible (una compra, unidad o journey por línea) y segura."""
-    orden = ["compras", "general", "ucp", "outbound", "unidades", "unidad_por_defecto", "journeys"]
+    orden = ["compras", "general", "ucp", "outbound", "precios_usd_1000", "precios_confirmados",
+             "unidades", "unidad_por_defecto", "journeys"]
     claves = [k for k in orden if k in nuevo] + [k for k in nuevo if k not in orden]
     partes = []
     for k in claves:
@@ -312,6 +322,99 @@ def adquirido_al(config_compras: list[dict], linea: str, fecha: pd.Timestamp | N
         if fecha is None or pd.isna(f) or f <= fecha:
             total += float(c.get("creditos") or 0)
     return total
+
+
+# ---------------------------------------------------------------------------
+# Dinero (USD)
+# ---------------------------------------------------------------------------
+
+CANALES = {"whatsapp": "WhatsApp", "correo": "Correo", "sms": "SMS"}
+PRECIOS_POR_DEFECTO = {"whatsapp": 4.0, "correo": None, "sms": None}   # USD por cada 1.000 créditos (editable)
+
+
+def precios_canal(config: dict) -> dict[str, float | None]:
+    """Precio en USD por cada 1.000 créditos de cada canal (config.json, "precios_usd_1000")."""
+    precios = dict(PRECIOS_POR_DEFECTO)
+    precios.update(config.get("precios_usd_1000") or {})
+    return {c: (float(v) if v not in (None, "") and float(v) > 0 else None) for c, v in precios.items()}
+
+
+def precios_confirmados(config: dict) -> dict[str, bool]:
+    return {c: bool((config.get("precios_confirmados") or {}).get(c, False)) for c in CANALES}
+
+
+def guardar_precios(ruta: Path, config: dict, precios: dict[str, float | None], confirmados: dict[str, bool]) -> None:
+    nuevo = dict(config)
+    nuevo["precios_usd_1000"] = {c: (round(float(v), 6) if v else None) for c, v in precios.items()}
+    nuevo["precios_confirmados"] = {c: bool(v) for c, v in confirmados.items()}
+    escribir_config(ruta, nuevo)
+
+
+def precio_promedio(compras: list[dict], linea: str, precio_canal: float | None) -> float | None:
+    """Precio por 1.000 créditos de la bolsa de una línea: promedio de sus compras, ponderado por créditos.
+    Cada compra usa su propio precio si lo tiene; si no, el del canal."""
+    total, valor = 0.0, 0.0
+    for c in compras or []:
+        if c.get("linea") != linea:
+            continue
+        creditos = float(c.get("creditos") or 0)
+        precio = c.get("precio_usd_1000")
+        precio = float(precio) if precio not in (None, "") and not pd.isna(precio) and float(precio) > 0 else precio_canal
+        if precio is None:
+            continue
+        total += creditos
+        valor += creditos * precio
+    if total > 0:
+        return valor / total
+    return precio_canal
+
+
+# ---------------------------------------------------------------------------
+# Efecto de los cambios de tarifa
+# ---------------------------------------------------------------------------
+
+def efecto_tarifas(envios: pd.DataFrame, tarifas: pd.DataFrame, inicio: pd.Timestamp,
+                   fin: pd.Timestamp) -> list[dict]:
+    """Para cada cambio de tarifa dentro de [inicio, fin]: lo cobrado con la tabla nueva frente a lo que
+    habrían costado las mismas entregas con la tabla anterior. La diferencia es el efecto de la tarifa
+    (no de que se haya enviado más o menos)."""
+    fechas = vigencias(tarifas)
+    resultado = []
+    for i, desde in enumerate(fechas):
+        if i == 0 or desde == pd.Timestamp.min or not (inicio <= desde <= fin):
+            continue
+        hasta = min(fin, fechas[i + 1] - pd.Timedelta(days=1)) if i + 1 < len(fechas) else fin
+        tramo = envios[(envios["fecha"] >= desde) & (envios["fecha"] <= hasta)]
+        if tramo.empty:
+            continue
+        real = float(tramo["creditos"].sum())
+        anterior = float(repreciar(tramo, tarifas, fechas[i - 1])["creditos"].sum())
+        resultado.append({"desde": desde, "hasta": hasta, "tabla_anterior": fechas[i - 1],
+                          "entregas": float(tramo["deliveries"].sum()), "creditos": real,
+                          "con_tabla_anterior": anterior, "efecto": real - anterior})
+    return resultado
+
+
+def journeys_sinteticos(nuevos: list[dict], inicio: pd.Timestamp, fin: pd.Timestamp) -> pd.DataFrame:
+    """Filas diarias para journeys nuevos o de reemplazo (entregas por semana, país, tipo, línea), en el
+    periodo de referencia, para sumarlas a la proyección. Los créditos los calcula la proyección con la
+    tarifa vigente de cada día."""
+    dias = pd.date_range(inicio, fin, freq="D")
+    filas = []
+    for n in nuevos:
+        semanal = float(n.get("entregas_semana") or 0)
+        if semanal <= 0 or len(dias) == 0:
+            continue
+        utility = str(n.get("tipo") or "Marketing").lower() == "utility"
+        diario = semanal / 7
+        for d in dias:
+            filas.append({"fecha": d, "journey": str(n.get("nombre") or "Journey nuevo"),
+                          "pais": str(n.get("pais") or "CO").upper(), "es_utility": utility,
+                          "linea": n.get("linea") or "", "unidad": n.get("unidad") or "",
+                          "deliveries": diario, "deliveries_marketing": 0.0 if utility else diario,
+                          "deliveries_utility": diario if utility else 0.0,
+                          "creditos": 0.0, "creditos_marketing": 0.0, "creditos_utility": 0.0})
+    return pd.DataFrame(filas)
 
 
 SEMAFORO_POR_DEFECTO = {"amarillo_pct": 80.0, "rojo_pct": 95.0, "fecha_inicio_conteo": None}
