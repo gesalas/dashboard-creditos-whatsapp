@@ -42,17 +42,9 @@ def modo_pruebas() -> bool:
 
 
 def puede_mostrar_correos() -> bool:
-    """Sin correo configurado, los mensajes se muestran en pantalla solo en el modo pruebas o en este mismo
-    computador (nunca en el enlace publicado ni a otro equipo de la red)."""
-    if modo_pruebas():
-        return True
-    if en_la_nube():
-        return False
-    try:
-        ip = st.context.ip_address
-    except Exception:
-        ip = None
-    return ip in (None, "127.0.0.1", "::1", "localhost")
+    """Los correos se muestran en pantalla en lugar de enviarse solo en el modo pruebas. En producción un código
+    nunca se muestra: si se mostrara, cualquiera podría crear una cuenta con un correo que no es suyo."""
+    return modo_pruebas()
 
 
 def fecha_local(texto: str | None, con_hora: bool = True) -> str:
@@ -68,22 +60,22 @@ def fecha_local(texto: str | None, con_hora: bool = True) -> str:
 
 def avisar(destinatarios, asunto: str, titulo: str, parrafos: list[str], destacado: str | None = None,
            *, contenedor=None) -> str:
-    """Envía un correo. Sin correo configurado lo muestra en pantalla si se puede.
+    """Envía un correo (en el modo pruebas solo lo muestra en pantalla, para no escribirle a nadie de verdad).
     Devuelve "enviado", "en_pantalla", "sin_correo" o "error"."""
     destinatarios = [d for d in ([destinatarios] if isinstance(destinatarios, str) else destinatarios) if d]
     if not destinatarios:
         return "sin_correo"
-    if correo_app.configurado():
+    if not puede_mostrar_correos() and correo_app.configurado():
         try:
             correo_app.enviar(destinatarios, asunto, titulo, parrafos, destacado)
             return "enviado"
         except Exception as error:
-            print(f"[correo] No se pudo enviar «{asunto}»: {error}", file=sys.stderr)
+            print(f"[correo] No se pudo enviar un correo a {', '.join(destinatarios)}: {error}", file=sys.stderr)
             return "error"
     if puede_mostrar_correos():
         destino = contenedor or st
         texto = " ".join(p.replace("<b>", "**").replace("</b>", "**") for p in parrafos)
-        destino.info(f"**Correo simulado** (el correo no está configurado; solo se ve en este computador) "
+        destino.info(f"**Correo simulado** (modo pruebas: no se envía) "
                      f"para {', '.join(destinatarios)}: *{asunto}*. {texto}"
                      + (f"\n\n**{destacado}**" if destacado else ""), icon=":material/forward_to_inbox:")
         return "en_pantalla"
@@ -103,15 +95,16 @@ def enviar_codigo(correo: str, proposito: str) -> str | None:
     resultado = avisar(correo, f"Tu código para {accion}: {codigo}", "Código de verificación",
                        [f"Usa este código para {accion} en el dashboard de créditos de mensajería.",
                         f"Vence en {A.CODIGO_MINUTOS} minutos. Si no lo pediste, ignora este correo."], codigo)
-    if resultado == "error":
-        return "No se pudo enviar el correo. Intenta de nuevo en unos minutos."
+    if resultado != "enviado" and resultado != "en_pantalla":
+        A.anular_codigo(correo, proposito)
+        return "No se pudo enviar el correo con el código. Intenta de nuevo en unos minutos."
     if resultado == "en_pantalla":
         st.session_state["codigo_simulado"] = (correo, codigo)
     return None
 
 
 def avisar_admins(asunto: str, parrafos: list[str]) -> None:
-    if correo_app.configurado():
+    if correo_app.configurado() and not puede_mostrar_correos():
         avisar(A.leer_acceso()["equipo_crm"], asunto, asunto, parrafos)
 
 
@@ -297,7 +290,7 @@ def _pestana_crear(nombres: dict[str, str], responsables: dict) -> None:
 def _mostrar_codigo_simulado(correo: str) -> None:
     sim = st.session_state.get("codigo_simulado")
     if sim and sim[0] == correo:
-        st.info(f"Correo simulado (el envío de correos no está configurado; solo se ve en este computador). "
+        st.info(f"Correo simulado (modo pruebas: no se envía). "
                 f"Código: **{sim[1]}**", icon=":material/forward_to_inbox:")
 
 
@@ -363,6 +356,10 @@ def _pestana_olvido() -> None:
 def pantalla_acceso(marca: dict, logo_html: str, nombres: dict[str, str], responsables: dict) -> None:
     encabezado_acceso(marca, logo_html)
     with caja_central():
+        if not correo_app.configurado():
+            st.warning("El envío de correos no está configurado: no se pueden crear cuentas ni recuperar "
+                       "contraseñas. El Equipo CRM puede crear cuentas con contraseña temporal.",
+                       icon=":material/mail_lock:")
         if not A.leer_acceso()["equipo_crm"]:
             st.warning("Aún no hay correos del Equipo CRM en acceso.json: nadie podrá aprobar solicitudes.",
                        icon=":material/warning:")

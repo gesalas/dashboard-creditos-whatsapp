@@ -16,7 +16,7 @@ Hay dos modos (en Windows también con doble clic en los `.bat`):
 | Modo | Comando | Para qué |
 |---|---|---|
 | Producción | `py -m streamlit run app.py` (`abrir_dashboard.bat`) | Igual que el enlace publicado: pide iniciar sesión. |
-| Pruebas | `py -m streamlit run app.py -- --pruebas` (`abrir_pruebas.bat`) | Sin inicio de sesión, con permisos del Equipo CRM, aviso naranja arriba y todo guardado en la carpeta local. Los correos se muestran en pantalla. En el enlace publicado este modo no existe aunque se pase el parámetro. |
+| Pruebas | `py -m streamlit run app.py -- --pruebas` (`abrir_pruebas.bat`) | Sin inicio de sesión, con permisos del Equipo CRM, aviso naranja arriba y todo guardado en la carpeta local. Los correos (contraseñas temporales, avisos) se muestran en pantalla y no se envían. En el enlace publicado este modo no existe aunque se pase el parámetro. |
 
 En Windows, si `python` no se reconoce, usar `py` en su lugar (`py -m streamlit run app.py`). Se usa `python -m` en lugar de `streamlit` directamente porque en Windows la carpeta de ejecutables de Python muchas veces no está en el PATH.
 
@@ -93,12 +93,14 @@ En Streamlit Community Cloud los archivos que la app modifica se borran cuando l
 Los valores van en **Settings → Secrets** de la app en Streamlit Cloud (o en `.streamlit/secrets.toml` en local, que no se sube). El modelo está en `.streamlit/secrets.toml.ejemplo`:
 
 - `[acceso] clave_sesion`: frase larga al azar para firmar el «recordarme».
-- `[correo]`: cuenta de Gmail con **contraseña de aplicación** (no la contraseña normal) para enviar códigos y avisos.
+- `[correo]`: cuenta de Gmail con **contraseña de aplicación** (no la contraseña normal) para enviar códigos y avisos. En el enlace publicado es la única forma de enviar correos.
 - `[github]`: token de grano fino creado por el dueño del repositorio, solo para este repositorio, con permiso *Contents: Read and write*. Tiene fecha de vencimiento: hay que renovarlo antes.
 
 Antes de pasar el inicio de sesión a la rama publicada: poner los correos del Equipo CRM en `acceso.json`, llenar los Secrets y que cada persona del Equipo CRM cree su cuenta. Sin `[correo]` en el enlace publicado no se pueden enviar códigos: crear cuenta y recuperar contraseña quedan desactivados (el Equipo CRM puede crear cuentas con contraseña temporal).
 
-En local, sin Secrets, todo se guarda en la carpeta del proyecto y los correos se muestran en pantalla solo si se abre desde el mismo computador.
+**Cómo se envían los códigos:** por SMTP si `[correo]` está en los Secrets; si no, en Windows, por el **Outlook de escritorio** del computador donde corre la app (el mismo de las alertas; el correo sale de esa cuenta de Outlook). En producción el código nunca se muestra en pantalla: si no hay cómo enviarlo, crear cuenta y recuperar contraseña quedan desactivados, porque mostrarlo permitiría registrarse con un correo ajeno. Si el envío falla, el código se anula.
+
+En local, sin Secrets, usuarios y bitácora se guardan en la carpeta del proyecto.
 
 ## Vocabulario
 

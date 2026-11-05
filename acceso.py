@@ -447,6 +447,13 @@ def nuevo_codigo(correo: str, proposito: str) -> str:
     return codigo
 
 
+def anular_codigo(correo: str, proposito: str) -> None:
+    """El correo no salió: el código queda inservible (nadie lo recibió)."""
+    reg = _memoria()["codigos"].get((normalizar(correo), proposito))
+    if reg:
+        reg["huella"] = None
+
+
 def verificar_codigo(correo: str, proposito: str, codigo: str) -> str | None:
     """None si el código es correcto (y lo gasta); si no, el motivo."""
     clave = (normalizar(correo), proposito)
