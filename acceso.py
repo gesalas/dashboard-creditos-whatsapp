@@ -33,6 +33,7 @@ CARPETA = Path(__file__).parent
 RUTA_ACCESO = CARPETA / "acceso.json"
 ARCHIVO_USUARIOS = "usuarios.json"
 ARCHIVO_BITACORA = "bitacora.json"
+ARCHIVO_PERFILES = "perfiles.json"      # foto de perfil y personalización del tablero, por persona
 RUTA_CLAVE_LOCAL = CARPETA / ".streamlit" / "clave_sesion.txt"
 
 DIAS_RECORDAR = 30
@@ -49,6 +50,7 @@ MAX_EVENTOS = 3000
 CACHE_SEGUNDOS = 20
 
 USUARIOS_VACIO = {"usuarios": {}}
+PERFILES_VACIO = {"perfiles": {}}
 BITACORA_VACIA = {"eventos": []}
 
 
@@ -257,6 +259,22 @@ def registrar(evento: str, quien: str, detalle: str = "", sobre: str = "") -> No
 
 def bitacora() -> list[dict]:
     return _leer_con_cache(ARCHIVO_BITACORA, BITACORA_VACIA).get("eventos", [])
+
+
+def perfil(correo: str) -> dict:
+    """Foto (avatar, data URI) y preferencias del tablero de una persona."""
+    return _leer_con_cache(ARCHIVO_PERFILES, PERFILES_VACIO).get("perfiles", {}).get(normalizar(correo) or correo, {})
+
+
+def guardar_perfil(correo: str, cambio, mensaje: str) -> dict:
+    """Aplica `cambio(perfil)` y guarda. Devuelve el perfil guardado."""
+    clave = normalizar(correo) or correo
+
+    def aplicar(datos: dict) -> dict:
+        cambio(datos.setdefault("perfiles", {}).setdefault(clave, {}))
+        return datos
+
+    return _guardar(ARCHIVO_PERFILES, aplicar, PERFILES_VACIO, mensaje).get("perfiles", {}).get(clave, {})
 
 
 def crear_usuario(correo: str, nombre: str, clave: str, unidad: str | None, responsables: dict) -> dict:

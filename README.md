@@ -29,7 +29,8 @@ En Windows, si `python` no se reconoce, usar `py` en su lugar (`py -m streamlit 
 | `tarifas.csv` | Respaldo: tabla única que solo se usa si no existe la carpeta `tarifas/`. | No hace falta actualizarlo |
 | `config.json` | Compras de créditos con su línea (`compras`), asignación a unidades por línea (`ucp`, `outbound`; los totales y `general` se calculan solos), umbrales del semáforo (`semaforo`) y textos del encabezado (`marca`). Precios por canal (`precios_usd_1000`), unidades y journeys. Se edita desde WhatsApp → Créditos y Todos los canales → Configuración. | Cuando se compren créditos o cambie la asignación |
 | `acceso.json` | Dominio permitido para crear cuentas y lista de correos del **Equipo CRM** (administradores). | Cuando entre o salga alguien del Equipo CRM |
-| `usuarios.json`, `bitacora.json` | Cuentas (contraseñas cifradas con bcrypt) y registro de cambios. Los crea la app; no se suben con git (ver Acceso). | Solos |
+| `usuarios.json`, `bitacora.json`, `perfiles.json` | Cuentas (contraseñas cifradas con bcrypt), registro de cambios, y foto y personalización de cada persona. Los crea la app; no se suben con git (ver Acceso). | Solos |
+| `personalizar.py` | Secciones del Resumen, colores de las unidades y la página Personalizar tablero. | Desarrollo |
 | `acceso.py`, `sesion.py`, `almacen.py`, `correo_app.py` | Cuentas y roles, pantallas de acceso, dónde se guardan los archivos y envío de correos de la app. | Desarrollo |
 | `logica.py` | Todos los cálculos. No depende de Streamlit. | Desarrollo |
 | `app.py` | La interfaz: filtros, pestañas y gráficas. | Desarrollo |
@@ -82,7 +83,11 @@ Para entrar hay que iniciar sesión. Quien encuentre el enlace sin una cuenta ap
 
 **Usuarios (Equipo CRM):** aprobar o rechazar solicitudes, cambiar las unidades de una cuenta, desactivarla o activarla, darle una contraseña temporal (debe cambiarla al entrar) y crear una cuenta para alguien que no recibe el código. Marca las cuentas que llevan más de 90 días sin entrar.
 
-**Mi cuenta:** cambiar la contraseña, pedir acceso a otra unidad y cerrar sesión en todos los equipos.
+**Menú de perfil (arriba a la derecha):** botón con la foto y el nombre de la persona. Al abrirlo muestra su correo y rol, y lleva a Mi cuenta, Personalizar tablero, Usuarios y Bitácora (estas dos solo para el Equipo CRM; Usuarios muestra cuántas solicitudes hay por aprobar) y Cerrar sesión. Sin foto, se ven las iniciales.
+
+**Mi cuenta:** subir o quitar la foto de perfil (se recorta en cuadrado y se guarda pequeña, 160 px), cambiar la contraseña, pedir acceso a otra unidad y cerrar sesión en todos los equipos.
+
+**Personalizar tablero (cada persona el suyo):** se arrastran las secciones del Resumen para cambiar su orden o pasarlas a «Ocultas», y se elige el color de cada unidad (se usa en las gráficas que comparan unidades, en *Gasto por unidad* y en las tarjetas de Unidades). «Volver a lo predeterminado» deshace todo. Se guarda en `perfiles.json` junto con la foto (en el enlace publicado, en la rama `datos-acceso`, como los usuarios).
 
 **Bitácora (Equipo CRM):** quién hizo qué y cuándo: cuentas creadas, aprobaciones y rechazos, cambios de unidades de una cuenta, desactivaciones, contraseñas temporales, bloqueos, inicios de sesión y cambios de créditos, precios y unidades (con lo que cambió). Se puede buscar, filtrar y descargar en CSV.
 
@@ -98,7 +103,7 @@ Los valores van en **Settings → Secrets** de la app en Streamlit Cloud (o en `
 
 Antes de pasar el inicio de sesión a la rama publicada: poner los correos del Equipo CRM en `acceso.json`, llenar los Secrets y que cada persona del Equipo CRM cree su cuenta. Sin `[correo]` en el enlace publicado no se pueden enviar códigos: crear cuenta y recuperar contraseña quedan desactivados (el Equipo CRM puede crear cuentas con contraseña temporal).
 
-**Correos de acceso:** código para crear la cuenta, código para restablecer la contraseña, acceso aprobado, solicitud no aprobada, contraseña temporal, aviso de contraseña cambiada (seguridad) y aviso al Equipo CRM de una solicitud nueva. Usan la misma plantilla que los informes (firma con el logo de `assets/`, tablas sobrias y enlace de `alertas.json` → `plantilla`). Para verlos sin enviar nada: `py correo_app.py --vista-previa` (quedan en `vista_previa/`; con `--abrir` se abren en el navegador). En el modo pruebas se muestran dentro de la app.
+**Correos de acceso:** código para crear la cuenta, código para restablecer la contraseña, acceso aprobado, solicitud no aprobada, contraseña temporal, aviso de contraseña cambiada (seguridad) y aviso al Equipo CRM de una solicitud nueva. Tienen un diseño propio de tarjeta centrada: logo pequeño arriba, título, el código grande en el centro, botón para ir al dashboard (con el enlace de `alertas.json` → `plantilla`) y la firma del Equipo CRM con los mismos datos de los informes. Para verlos sin enviar nada: `py correo_app.py --vista-previa` (quedan en `vista_previa/`; con `--abrir` se abren en el navegador). En el modo pruebas se muestran dentro de la app.
 
 **Cómo se envían los códigos:** por SMTP si `[correo]` está en los Secrets; si no, en Windows, por el **Outlook de escritorio** del computador donde corre la app (el mismo de las alertas; el correo sale de esa cuenta de Outlook). En producción el código nunca se muestra en pantalla: si no hay cómo enviarlo, crear cuenta y recuperar contraseña quedan desactivados, porque mostrarlo permitiría registrarse con un correo ajeno. Si el envío falla, el código se anula.
 
@@ -126,15 +131,14 @@ En local, sin Secrets, usuarios y bitácora se guardan en la carpeta del proyect
 
 ## Dinero (USD)
 
-- El gasto en dólares se calcula con el **precio por cada 1.000 créditos** de cada canal, que se edita en Todos los canales → Configuración. Salesforce no publica ese valor: sale del contrato o de la orden de compra. Hoy WhatsApp está en 4 USD como valor aproximado.
+- El gasto en dólares se calcula con el **precio por cada 1.000 créditos** de cada canal, que se edita en Todos los canales → Configuración. Salesforce no publica ese valor: sale del contrato o de la orden de compra. WhatsApp: 4,16 USD por cada 1.000 créditos (confirmado).
 - Mientras el precio no esté marcado como *Confirmado*, las cifras en dólares dicen "(estimado)".
 - En WhatsApp → Créditos, cada compra puede llevar su propio precio (columna *Precio por 1.000 (USD)*), si se pagó a otro valor. Cada bolsa usa el promedio de sus compras, ponderado por créditos.
 - Se guarda en `config.json`: `precios_usd_1000`, `precios_confirmados` y, en cada compra, `precio_usd_1000` (opcional).
 
-## Efecto de los cambios de tarifa
+## Cambios de tarifa
 
 - En las gráficas por semana y por mes, una **línea punteada** marca el día en que empezó a regir cada tabla de tarifas.
-- En el Resumen, el recuadro *Efecto de los cambios de tarifa* compara, desde cada cambio, lo que se cobró con lo que habrían costado **las mismas entregas** con la tabla anterior. La diferencia es lo que subió o bajó solo por la tarifa; el resto de la variación se debe a cuántas entregas hubo.
 - Las proyecciones siempre usan la tabla vigente en cada día proyectado, es decir, la más reciente.
 
 ## Semáforo de consumo
@@ -156,6 +160,8 @@ Si algo está en amarillo o rojo aparece además un aviso. Los umbrales se cambi
 `fecha_inicio_conteo` (por ejemplo `"2026-01-01"`) define desde qué fecha se cuenta el consumo del semáforo, para que coincida con el inicio de la bolsa de créditos; `null` cuenta todo el reporte.
 
 ## Barra lateral y encabezado
+
+Secciones del Resumen (en este orden por defecto; cada persona puede cambiarlo): Estado de los créditos, Consumo del periodo, Consumo por semana, Consumo por mes, Gasto por unidad (USD), Consumo por unidad y Países con mayor consumo. *Gasto por unidad* y *Consumo por unidad* solo se ven en la vista del Equipo CRM.
 
 La barra lateral agrupa los filtros en tarjetas: **Vista**, **Línea de WhatsApp** (cada opción con su descripción o número), **Periodo a consultar** (con las fechas y días que quedan elegidos) y **Datos** (hasta qué día llegan los datos, con un punto verde o amarillo según qué tan recientes son; fecha del reporte, tablas de tarifas y el botón para recargar).
 

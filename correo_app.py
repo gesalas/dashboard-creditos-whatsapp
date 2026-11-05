@@ -120,12 +120,12 @@ def _tipo_logo(ruta: Path) -> str:
 @dataclass
 class Mensaje:
     asunto: str
-    cuerpo: str          # HTML del cuerpo (sin saludo final ni firma)
+    cuerpo: str          # HTML del contenido de la tarjeta (sin logo, firma ni pie)
     texto: str           # versión en texto plano
     pie: str             # por qué lo recibe + nota de seguridad
 
     def html(self, logo_src: str | None) -> str:
-        return I._documento(self.asunto, self.cuerpo, plantilla(), logo_src, escape(self.pie))
+        return _documento(self.asunto, self.cuerpo, logo_src, self.pie)
 
     def vista_previa(self) -> str:
         """HTML con el logo incrustado (para verlo en el navegador o en el modo pruebas)."""
@@ -193,49 +193,145 @@ def enviar(destinatarios: list[str] | str, m: Mensaje) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Piezas comunes
+# Diseño de los correos de acceso
+#
+# Tarjeta blanca centrada sobre fondo gris claro, logo pequeño arriba, título y textos centrados, el código
+# grande sin recuadros duros, detalles en filas suaves y la firma del Equipo CRM abajo. Todo con tablas y
+# estilos en línea porque Outlook no entiende diseños modernos (ignora las esquinas redondeadas, que en los
+# demás clientes sí se ven).
 # ---------------------------------------------------------------------------
 
-def _ahora() -> datetime:
-    return datetime.now(ZONA)
+FONDO = "#F3F5F9"
+TARJETA_BORDE = "#E3E7EE"
+SUAVE = "#EEF3FA"          # fondo del código
+LINEA = "#ECEFF4"
+GRIS_TEXTO = "#5F6773"
+GRIS_CLARO = "#8A919C"
+VERDE = "#1E7B3C"
+ANCHO = 560
 
 
-def _fecha_hora(momento: datetime) -> str:
-    return f"{momento:%d/%m/%Y} a las {momento:%I:%M %p}".replace("AM", "a. m.").replace("PM", "p. m.")
+def _documento(asunto: str, cuerpo: str, logo_src: str | None, pie: str) -> str:
+    f = plantilla()["firma"]
+    logo = (f'<img src="{logo_src}" alt="{escape(f.get("institucion", ""))}" width="104" '
+            f'style="display:block; margin:0 auto; border:0; width:104px; height:auto;">' if logo_src else
+            f'<div style="font-size:11pt; font-weight:bold; color:{I.AZUL};">{escape(f.get("institucion", ""))}</div>')
+    direccion = " · ".join(escape(l) for l in (f.get("direccion") or []))
+    correo = f.get("correo") or ""
+    correo_html = (f'<br><a href="mailto:{escape(correo)}" style="color:{I.AZUL}; text-decoration:none;">'
+                   f'{escape(correo)}</a>' if correo else "")
+    return (
+        f'<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" '
+        f'content="width=device-width, initial-scale=1"><title>{escape(asunto)}</title></head>'
+        f'<body style="margin:0; padding:0; background:{FONDO};">'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{FONDO};">'
+        f'<tr><td align="center" style="padding:28px 12px;">'
+        f'<table role="presentation" width="{ANCHO}" cellpadding="0" cellspacing="0" style="width:100%; '
+        f'max-width:{ANCHO}px; background:#FFFFFF; border:1px solid {TARJETA_BORDE}; border-radius:14px; '
+        f'border-collapse:separate; font-family:{I.FUENTE}; color:{I.TEXTO};">'
+        f'<tr><td style="height:5px; line-height:5px; font-size:0; background:{I.AZUL}; '
+        f'border-radius:14px 14px 0 0;">&nbsp;</td></tr>'
+        f'<tr><td align="center" style="padding:26px 40px 6px 40px;">{logo}</td></tr>'
+        f'<tr><td style="padding:10px 32px 30px 32px; font-size:11pt; line-height:1.55;">{cuerpo}</td></tr>'
+        f'<tr><td align="center" style="padding:18px 28px 22px 28px; border-top:1px solid {LINEA}; '
+        f'font-size:9.5pt; color:{GRIS_TEXTO}; line-height:1.5;">'
+        f'<b style="color:{I.AZUL};">{escape(f.get("nombre", ""))}</b> · {escape(f.get("area", ""))}<br>'
+        f'{escape(f.get("institucion", ""))}<br><span style="color:{GRIS_CLARO};">{direccion}</span>{correo_html}'
+        f'</td></tr></table>'
+        f'<table role="presentation" width="{ANCHO}" cellpadding="0" cellspacing="0" style="width:100%; '
+        f'max-width:{ANCHO}px;"><tr><td align="center" style="padding:14px 30px 0 30px; font-family:{I.FUENTE}; '
+        f'font-size:8.5pt; line-height:1.5; color:{GRIS_CLARO};">{escape(pie)}</td></tr></table>'
+        f'</td></tr></table></body></html>')
 
 
-def _saludo(nombre: str | None) -> str:
-    primero = (nombre or "").strip().split(" ")[0]
-    return f"Hola, {escape(primero)}:" if primero else "Hola:"
+def _titulo(texto: str, etiqueta: str = "") -> str:
+    sobre = (f'<div style="font-size:8.5pt; font-weight:bold; letter-spacing:1.2px; text-transform:uppercase; '
+             f'color:{GRIS_CLARO}; margin-bottom:6px;">{escape(etiqueta)}</div>' if etiqueta else "")
+    return (f'<div style="text-align:center; margin:6px 0 14px 0;">{sobre}'
+            f'<div style="font-size:17pt; font-weight:bold; color:{I.AZUL}; line-height:1.25;">{escape(texto)}</div>'
+            f'</div>')
 
 
-def _caja_codigo(valor: str, *, tamano: str = "24pt", espacio: str = "6px") -> str:
-    """El código o la contraseña temporal, destacado en una caja sobria (tabla, para que Outlook la respete)."""
-    return (f'<table cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:4px 0 16px 0;"><tr>'
-            f'<td style="padding:12px 28px; border:1px solid {I.BORDE}; border-left:4px solid {I.AZUL}; '
-            f'background:{I.FONDO_ENCABEZADO}; font-family:Consolas, \'Courier New\', monospace; font-size:{tamano}; '
-            f'font-weight:bold; letter-spacing:{espacio}; color:{I.AZUL};">{escape(valor)}</td></tr></table>')
+def _parrafo(texto_html: str, *, centrado: bool = True, color: str | None = None, tamano: str = "11pt",
+             margen: str = "0 0 14px 0") -> str:
+    return (f'<p style="margin:{margen}; text-align:{"center" if centrado else "left"}; font-size:{tamano}; '
+            f'color:{color or I.TEXTO};">{texto_html}</p>')
 
 
-def _enlace(unidad: str | None = None, texto: str = "Ingresa al dashboard con tu correo institucional") -> str:
-    """Enlace visible y completo al dashboard (como en los informes). Sin URL en alertas.json, solo la frase."""
+def _destacado(valor: str, nota: str = "", *, grande: bool = True) -> str:
+    """El código o la contraseña temporal, centrado y grande, sobre un fondo suave sin bordes."""
+    estilo = ("font-size:30pt; letter-spacing:12px; padding:16px 22px 16px 34px;" if grande
+              else "font-size:19pt; letter-spacing:3px; padding:14px 28px;")
+    nota_html = (f'<div style="margin-top:10px; font-size:9.5pt; color:{GRIS_TEXTO};">{nota}</div>' if nota else "")
+    return (f'<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:6px auto 4px auto;">'
+            f'<tr><td align="center" style="background:{SUAVE}; border-radius:12px; {estilo} '
+            f'font-family:Consolas, \'Courier New\', monospace; font-weight:bold; color:{I.AZUL};">'
+            f'{escape(valor)}</td></tr></table>'
+            f'<div style="text-align:center; margin-bottom:20px;">{nota_html}</div>')
+
+
+def _detalles(filas: list[tuple[str, str]]) -> str:
+    """Datos en filas suaves (sin cuadrícula): etiqueta en gris a la izquierda, valor a la derecha."""
+    cuerpo = "".join(
+        f'<tr><td style="padding:9px 0; border-bottom:1px solid {LINEA}; color:{GRIS_TEXTO}; font-size:10pt;">'
+        f'{escape(e)}</td><td align="right" style="padding:9px 0; border-bottom:1px solid {LINEA}; '
+        f'font-size:10pt; font-weight:bold; color:{I.TEXTO};">{v}</td></tr>'
+        for e, v in filas)
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'style="margin:6px 0 20px 0; border-top:1px solid {LINEA};">{cuerpo}</table>')
+
+
+def _boton(texto: str, url: str) -> str:
+    """Botón que Outlook también respeta (tabla con fondo de color)."""
+    return (f'<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:4px auto 18px auto;">'
+            f'<tr><td align="center" style="background:{I.AZUL}; border-radius:8px;">'
+            f'<a href="{escape(url)}" style="display:inline-block; padding:12px 30px; font-family:{I.FUENTE}; '
+            f'font-size:11pt; font-weight:bold; color:#FFFFFF; text-decoration:none;">{escape(texto)}</a>'
+            f'</td></tr></table>')
+
+
+def _boton_dashboard(texto: str, unidad: str | None = None) -> str:
     url = I.url_dashboard(plantilla(), unidad)
-    if url:
-        return I._p(f"{escape(texto)}:<br><a href=\"{escape(url)}\" style=\"color:#0563C1;\">{escape(url)}</a>")
-    return I._p(f"{escape(texto)}.")
+    return _boton(texto, url) if url else ""
 
 
-def _enlace_texto(unidad: str | None = None) -> str:
-    url = I.url_dashboard(plantilla(), unidad)
-    return f"Dashboard: {url}" if url else ""
+def _consejo(texto_html: str) -> str:
+    """Nota pequeña al final del contenido (seguridad o siguiente paso)."""
+    return _parrafo(texto_html, color=GRIS_TEXTO, tamano="9.5pt", margen="4px 0 0 0")
 
 
 def _contacto() -> str:
     correo = plantilla()["firma"].get("correo") or ""
     if correo:
-        return I._p(f'Si no reconoces esta actividad, escríbenos de inmediato a '
-                    f'<a href="mailto:{escape(correo)}" style="color:#0563C1;">{escape(correo)}</a>.')
-    return I._p("Si no reconoces esta actividad, responde a este correo para avisarnos.")
+        return _consejo(f'¿No fuiste tú? Escríbenos de inmediato a <a href="mailto:{escape(correo)}" '
+                        f'style="color:{I.AZUL};">{escape(correo)}</a>.')
+    return _consejo("¿No fuiste tú? Responde a este correo para avisarnos de inmediato.")
+
+
+def _ahora() -> datetime:
+    return datetime.now(ZONA)
+
+
+def _hora(momento: datetime) -> str:
+    return f"{momento:%I:%M %p}".lstrip("0").replace("AM", "a. m.").replace("PM", "p. m.")
+
+
+def _fecha_hora(momento: datetime) -> str:
+    return f"{momento:%d/%m/%Y}, {_hora(momento)}"
+
+
+def _primer_nombre(nombre: str | None) -> str:
+    return (nombre or "").strip().split(" ")[0]
+
+
+def _saludo(nombre: str | None) -> str:
+    primero = _primer_nombre(nombre)
+    return f"Hola, {escape(primero)}" if primero else "Hola"
+
+
+def _enlace_texto(unidad: str | None = None) -> str:
+    url = I.url_dashboard(plantilla(), unidad)
+    return f"Dashboard: {url}" if url else ""
 
 
 def _texto_plano(*partes: str) -> str:
@@ -258,24 +354,27 @@ def _lista(nombres: list[str]) -> str:
 def codigo(nombre: str | None, correo: str, valor: str, proposito: str, minutos: int) -> Mensaje:
     """Código de verificación para crear la cuenta ("registro") o restablecer la contraseña ("recuperar")."""
     registro = proposito == "registro"
-    accion = "crear tu cuenta" if registro else "restablecer tu contraseña"
     ahora = _ahora()
-    asunto = ("Código para crear tu cuenta en el dashboard de créditos" if registro
-              else "Código para restablecer tu contraseña del dashboard de créditos")
-    intro = (f"Recibimos una solicitud para {accion} en el {NOMBRE_APP} del Equipo CRM con el correo "
-             f"<b>{escape(correo)}</b>. Para continuar, escribe este código en la pantalla donde lo pediste:")
-    filas = [("Cuenta", escape(correo)), ("Solicitado", _fecha_hora(ahora)),
-             ("Válido hasta", _fecha_hora(ahora + timedelta(minutes=minutos)))]
-    cuerpo = (I._p(_saludo(nombre)) + I._p(intro)
-              + I._titulo_seccion("Código de verificación") + _caja_codigo(valor)
-              + I._tabla_datos(filas)
-              + I._p(f"El código sirve una sola vez y vence en {minutos} minutos. Si no fuiste tú, ignora este "
-                     f"correo: {'no se creará ninguna cuenta' if registro else 'tu contraseña sigue igual'}."))
-    texto = _texto_plano(_saludo(nombre),
-                         f"Recibimos una solicitud para {accion} en el {NOMBRE_APP} con el correo {correo}.",
-                         f"Tu código: {valor}", f"Vence en {minutos} minutos y sirve una sola vez. "
-                         "Si no fuiste tú, ignora este correo.")
-    pie = f"Recibes este correo porque alguien escribió {correo} en el {NOMBRE_APP}. " + PIE_ACCESO
+    vence = ahora + timedelta(minutes=minutos)
+    asunto = ("Tu código para crear tu cuenta en el dashboard de créditos" if registro
+              else "Tu código para restablecer tu contraseña del dashboard de créditos")
+    if registro:
+        titulo, etiqueta = "Confirma tu correo", "Crear cuenta"
+        intro = (f"{_saludo(nombre)}. Ya casi terminas: escribe este código en la pantalla de registro del "
+                 f"{NOMBRE_APP} para confirmar que este correo es tuyo.")
+        no_fuiste = "Si no fuiste tú, ignora este correo: sin el código nadie puede crear una cuenta con él."
+    else:
+        titulo, etiqueta = "Restablece tu contraseña", "Recuperar acceso"
+        intro = (f"{_saludo(nombre)}. Recibimos una solicitud para restablecer la contraseña de tu cuenta. "
+                 f"Escribe este código en la pantalla donde lo pediste y luego crea tu nueva contraseña.")
+        no_fuiste = "Si no fuiste tú, ignora este correo: tu contraseña sigue siendo la misma."
+    cuerpo = (_titulo(titulo, etiqueta) + _parrafo(intro)
+              + _destacado(valor, f"Vence a las <b>{_hora(vence)}</b> ({minutos} minutos) y sirve una sola vez.")
+              + _detalles([("Cuenta", escape(correo)), ("Solicitado", _fecha_hora(ahora))])
+              + _consejo(no_fuiste))
+    texto = _texto_plano(f"{_saludo(nombre)},", intro, f"Tu código: {valor}",
+                         f"Vence en {minutos} minutos y sirve una sola vez.", no_fuiste)
+    pie = (f"Recibes este correo porque alguien escribió {correo} en el {NOMBRE_APP}. " + PIE_ACCESO)
     return Mensaje(asunto, cuerpo, texto, pie)
 
 
@@ -284,20 +383,18 @@ def acceso_aprobado(nombre: str | None, correo: str, unidades: dict[str, str], a
     nombres = list(unidades.values())
     clave = next(iter(unidades)) if len(unidades) == 1 else None
     asunto = f"Ya tienes acceso a {_lista(nombres)} en el dashboard de créditos"
-    motivo = ("Como estás registrado como responsable de la unidad, el acceso quedó aprobado de una vez."
-              if automatico else "El Equipo CRM aprobó tu solicitud de acceso.")
-    filas = [("Cuenta", escape(correo)), ("Unidades que puedes ver", escape(_lista(nombres))),
-             ("Aprobado", _fecha_hora(_ahora()))]
-    cuerpo = (I._p(_saludo(nombre))
-              + I._p(f"{motivo} Desde ahora puedes consultar en el {NOMBRE_APP} el consumo de créditos de "
-                     f"<b>{escape(_lista(nombres))}</b>: el estado de los créditos asignados, la proyección de "
-                     f"agotamiento y el detalle por journey.")
-              + I._titulo_seccion("Acceso aprobado")
-              + I._tabla_datos(filas)
-              + _enlace(clave, "Ingresa con tu correo institucional y la contraseña que creaste")
-              + I._p("Si tienes más de una unidad, puedes cambiar entre ellas en la opción <b>Vista</b> de la "
-                     "barra lateral."))
-    texto = _texto_plano(_saludo(nombre), f"{motivo} Ya puedes ver {_lista(nombres)} en el {NOMBRE_APP}.",
+    motivo = ("Como estás registrado como responsable de la unidad, tu acceso quedó listo de una vez."
+              if automatico else "El Equipo CRM aprobó tu solicitud.")
+    cuerpo = (_titulo("Tu acceso está listo", "Acceso aprobado")
+              + _parrafo(f"{_saludo(nombre)}. {motivo} Desde ahora puedes ver el consumo de "
+                         f"créditos de <b>{escape(_lista(nombres))}</b>: cuánto se ha usado, cuánto queda, cuándo se "
+                         f"agotaría y qué journeys consumen más.")
+              + _boton_dashboard("Ir al dashboard", clave)
+              + _detalles([("Cuenta", escape(correo)), ("Unidades que puedes ver", escape(_lista(nombres))),
+                           ("Aprobado", _fecha_hora(_ahora()))])
+              + _consejo("Entra con tu correo institucional y la contraseña que creaste. Si tienes más de una "
+                         "unidad, cámbiala en <b>Vista</b>, en la barra lateral."))
+    texto = _texto_plano(f"{_saludo(nombre)},", f"{motivo} Ya puedes ver {_lista(nombres)} en el {NOMBRE_APP}.",
                          _enlace_texto(clave))
     pie = f"Recibes este correo porque pediste acceso al {NOMBRE_APP}. " + PIE_ACCESO
     return Mensaje(asunto, cuerpo, texto, pie)
@@ -305,16 +402,15 @@ def acceso_aprobado(nombre: str | None, correo: str, unidades: dict[str, str], a
 
 def solicitud_no_aprobada(nombre: str | None, correo: str, unidad: str) -> Mensaje:
     asunto = f"Tu solicitud de acceso a {unidad} en el dashboard de créditos"
-    cuerpo = (I._p(_saludo(nombre))
-              + I._p(f"El Equipo CRM revisó tu solicitud para ver <b>{escape(unidad)}</b> en el {NOMBRE_APP} y, "
-                     f"por ahora, no fue aprobada.")
-              + I._titulo_seccion("Solicitud de acceso")
-              + I._tabla_datos([("Cuenta", escape(correo)), ("Unidad solicitada", escape(unidad)),
-                                ("Revisada", _fecha_hora(_ahora()))])
-              + I._p("Esto suele pasar cuando la unidad elegida no corresponde a tu área. Si crees que es un error, "
-                     "responde a este correo o pide acceso a otra unidad desde el dashboard."))
-    texto = _texto_plano(_saludo(nombre), f"El Equipo CRM revisó tu solicitud para ver {unidad} y, por ahora, "
-                         "no fue aprobada. Si crees que es un error, responde a este correo.")
+    cuerpo = (_titulo("Revisamos tu solicitud", "Solicitud de acceso")
+              + _parrafo(f"{_saludo(nombre)}. El Equipo CRM revisó tu solicitud para ver <b>{escape(unidad)}</b> y, "
+                         f"por ahora, no fue aprobada.")
+              + _detalles([("Cuenta", escape(correo)), ("Unidad solicitada", escape(unidad)),
+                           ("Revisada", _fecha_hora(_ahora()))])
+              + _consejo("Suele pasar cuando la unidad elegida no corresponde a tu área. Si crees que es un error, "
+                         "responde a este correo o pide otra unidad desde el dashboard."))
+    texto = _texto_plano(f"{_saludo(nombre)},", f"El Equipo CRM revisó tu solicitud para ver {unidad} y, por "
+                         "ahora, no fue aprobada. Si crees que es un error, responde a este correo.")
     pie = f"Recibes este correo porque pediste acceso al {NOMBRE_APP}. " + PIE_ACCESO
     return Mensaje(asunto, cuerpo, texto, pie)
 
@@ -324,16 +420,14 @@ def contrasena_temporal(nombre: str | None, correo: str, valor: str, unidades: l
     filas = [("Cuenta", escape(correo))]
     if unidades:
         filas.append(("Unidades que puedes ver", escape(_lista(unidades))))
-    cuerpo = (I._p(_saludo(nombre))
-              + I._p(f"El Equipo CRM te asignó una contraseña temporal para entrar al {NOMBRE_APP}.")
-              + I._titulo_seccion("Contraseña temporal")
-              + _caja_codigo(valor, tamano="18pt", espacio="2px")
-              + I._tabla_datos(filas)
-              + I._p("Al entrar te pediremos crear una contraseña nueva; la temporal deja de servir en ese "
-                     "momento. Escríbela tal como aparece, con los guiones.")
-              + _enlace(None, "Ingresa con tu correo institucional y esta contraseña")
+    cuerpo = (_titulo("Tu contraseña temporal", "Acceso al dashboard")
+              + _parrafo(f"{_saludo(nombre)}. El Equipo CRM te preparó una contraseña temporal para entrar al "
+                         f"{NOMBRE_APP}. Escríbela tal como aparece, con los guiones.")
+              + _destacado(valor, "Al entrar te pediremos crear una contraseña nueva.", grande=False)
+              + _boton_dashboard("Entrar al dashboard")
+              + _detalles(filas)
               + _contacto())
-    texto = _texto_plano(_saludo(nombre), f"El Equipo CRM te asignó una contraseña temporal para el {NOMBRE_APP}.",
+    texto = _texto_plano(f"{_saludo(nombre)},", f"El Equipo CRM te preparó una contraseña temporal para el {NOMBRE_APP}.",
                          f"Contraseña temporal: {valor}", "Al entrar te pediremos crear una nueva.", _enlace_texto())
     pie = f"Recibes este correo porque el Equipo CRM gestionó tu cuenta del {NOMBRE_APP}. " + PIE_ACCESO
     return Mensaje(asunto, cuerpo, texto, pie)
@@ -342,14 +436,12 @@ def contrasena_temporal(nombre: str | None, correo: str, valor: str, unidades: l
 def contrasena_cambiada(nombre: str | None, correo: str, como: str) -> Mensaje:
     """Aviso de seguridad después de cambiar o restablecer la contraseña."""
     asunto = "Tu contraseña del dashboard de créditos cambió"
-    cuerpo = (I._p(_saludo(nombre))
-              + I._p(f"Te confirmamos que la contraseña de tu cuenta del {NOMBRE_APP} cambió. Por seguridad, se "
-                     f"cerraron las sesiones que tenías recordadas en otros equipos.")
-              + I._titulo_seccion("Cambio de contraseña")
-              + I._tabla_datos([("Cuenta", escape(correo)), ("Cómo", escape(como)),
-                                ("Fecha", _fecha_hora(_ahora()))])
+    cuerpo = (_titulo("Tu contraseña cambió", "Aviso de seguridad")
+              + _parrafo(f"{_saludo(nombre)}. Te confirmamos que la contraseña de tu cuenta cambió. Por seguridad, "
+                         f"cerramos las sesiones que tenías recordadas en otros equipos.")
+              + _detalles([("Cuenta", escape(correo)), ("Cómo", escape(como)), ("Fecha", _fecha_hora(_ahora()))])
               + _contacto())
-    texto = _texto_plano(_saludo(nombre), f"La contraseña de tu cuenta del {NOMBRE_APP} ({correo}) cambió "
+    texto = _texto_plano(f"{_saludo(nombre)},", f"La contraseña de tu cuenta del {NOMBRE_APP} ({correo}) cambió "
                          f"({como}). Si no fuiste tú, avísanos de inmediato.")
     pie = "Recibes este aviso de seguridad cada vez que cambia la contraseña de tu cuenta. " + PIE_ACCESO
     return Mensaje(asunto, cuerpo, texto, pie)
@@ -358,16 +450,13 @@ def contrasena_cambiada(nombre: str | None, correo: str, como: str) -> Mensaje:
 def nueva_solicitud(nombre: str, correo: str, unidad: str, pendientes: int) -> Mensaje:
     """Aviso al Equipo CRM: alguien pidió acceso a una unidad."""
     asunto = f"Solicitud de acceso al dashboard de créditos: {unidad}"
-    filas = [("Nombre", escape(nombre)), ("Correo", escape(correo)), ("Unidad solicitada", escape(unidad)),
-             ("Fecha", _fecha_hora(_ahora())), ("Solicitudes por aprobar", str(pendientes))]
-    cuerpo = (I._p("Hola,")
-              + I._p(f"<b>{escape(nombre)}</b> pidió acceso a <b>{escape(unidad)}</b> en el {NOMBRE_APP}. Su correo "
-                     f"no está registrado como responsable de esa unidad, así que la solicitud quedó pendiente.")
-              + I._titulo_seccion("Solicitud por revisar")
-              + I._tabla_datos(filas)
-              + I._p("Para aprobarla o rechazarla, entra al dashboard con tu cuenta del Equipo CRM y abre "
-                     "<b>Usuarios</b> en la barra lateral.")
-              + _enlace(None, "Ingresa al dashboard"))
+    cuerpo = (_titulo("Nueva solicitud de acceso", "Para el Equipo CRM")
+              + _parrafo(f"<b>{escape(nombre)}</b> pidió acceso a <b>{escape(unidad)}</b>. Su correo no está "
+                         f"registrado como responsable de esa unidad, así que la solicitud espera tu revisión.")
+              + _boton_dashboard("Revisar en Usuarios")
+              + _detalles([("Nombre", escape(nombre)), ("Correo", escape(correo)), ("Unidad", escape(unidad)),
+                           ("Fecha", _fecha_hora(_ahora())), ("Solicitudes por revisar", str(pendientes))])
+              + _consejo("En el dashboard, abre el menú de tu perfil (arriba a la derecha) y entra a <b>Usuarios</b>."))
     texto = _texto_plano("Hola,", f"{nombre} ({correo}) pidió acceso a {unidad} en el {NOMBRE_APP}.",
                          "Apruébala o recházala en el dashboard, en Usuarios.", _enlace_texto())
     pie = (f"Recibes este aviso porque estás en la lista del Equipo CRM del {NOMBRE_APP} (acceso.json). "
@@ -376,7 +465,7 @@ def nueva_solicitud(nombre: str, correo: str, unidad: str, pendientes: int) -> M
 
 
 # ---------------------------------------------------------------------------
-# Vista previa:  py correo_app.py
+# Vista previa:  py correo_app.py --vista-previa
 # ---------------------------------------------------------------------------
 
 def vista_previa(carpeta: Path | None = None) -> list[tuple[str, Path]]:

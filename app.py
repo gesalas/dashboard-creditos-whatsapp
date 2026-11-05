@@ -23,6 +23,7 @@ import streamlit as st
 import acceso as A
 import almacen
 import logica as L
+import personalizar as P
 import sesion as S
 
 CARPETA = Path(__file__).parent
@@ -202,6 +203,8 @@ st.markdown(
     [class*="st-key-lado-linea"] [data-testid="stRadioOption"] p {font-weight: 600; color: #1B1F24; font-size: 0.88rem;}
     [class*="st-key-lado-linea"] [data-testid="stRadioCaption"] {margin: 0 0 0 1.75rem; padding: 0;}
     [class*="st-key-lado-linea"] [data-testid="stRadioCaption"] p {font-size: 0.72rem; color: #6B6F76; margin: 0;}
+    .punto-unidad {display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px;
+      vertical-align: 1px;}
     .modo-pruebas {background: #FFF4E5; border: 1px solid #E8A33D; color: #7A4B00; border-radius: 8px;
       padding: 8px 10px; font-size: 0.78rem; font-weight: 600; line-height: 1.35; margin-bottom: 10px;}
     .modo-pruebas-ancho {font-size: 0.85rem; padding: 8px 14px;}
@@ -365,8 +368,11 @@ def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizonta
                    orden: str | list | None = None, titulo_valor: str = "Créditos",
                    altura: int | None = None, color: str = COLOR_SERIE,
                    dominio_max: float | None = None, estrecho: bool = False,
-                   marcas: list[tuple[str, str]] | None = None) -> None:
+                   marcas: list[tuple[str, str]] | None = None, colores: dict[str, str] | None = None,
+                   formato=None) -> None:
     """Barras de una sola serie con el valor escrito sobre cada barra.
+
+    `colores`: {categoría: color} para pintar cada barra con su color (por ejemplo, el de cada unidad).
 
     `marcas`: [(categoría, texto)] para dibujar una línea vertical punteada (por ejemplo, cambios de tarifa).
 
@@ -378,7 +384,7 @@ def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizonta
         st.info("Sin datos para el periodo seleccionado.")
         return
     datos = datos.copy()
-    datos["_etiqueta"] = datos[valor].apply(num)
+    datos["_etiqueta"] = datos[valor].apply(formato or num)
     n = len(datos)
     maximo = float(dominio_max if dominio_max is not None else datos[valor].max()) or 1.0
     orden_eje = orden if orden is not None else ("-x" if horizontal else "-y")
@@ -387,7 +393,7 @@ def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizonta
                else alt.Axis(title=None, labelAngle=-90, labelOverlap=False, labelFontSize=11 if n <= 30 else 9))
     eje_val = alt.Axis(title=titulo_valor, labelExpr=EJE_NUMERO, tickCount=5)
     if horizontal:
-        escala = alt.Scale(domain=[0, maximo * 1.16])
+        escala = alt.Scale(domain=[0, maximo * (1.4 if formato else 1.16)])
         x = alt.X(f"{valor}:Q", axis=eje_val, scale=escala)
         y = alt.Y(f"{categoria}:N", sort=orden_eje, axis=eje_cat)
         texto_kw = {"align": "left", "baseline": "middle", "dx": 4, "fontSize": 11}
@@ -405,7 +411,13 @@ def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizonta
         x=x, y=y,
         tooltip=[alt.Tooltip(f"{categoria}:N", title=" "), alt.Tooltip("_etiqueta:N", title=titulo_valor)],
     )
-    barras = base.mark_bar(color=color, cornerRadiusEnd=3)
+    if colores:
+        dominio = [c for c in colores if c in set(datos[categoria])]
+        barras = base.mark_bar(cornerRadiusEnd=3).encode(
+            color=alt.Color(f"{categoria}:N", legend=None,
+                            scale=alt.Scale(domain=dominio, range=[colores[c] for c in dominio])))
+    else:
+        barras = base.mark_bar(color=color, cornerRadiusEnd=3)
     textos = base.mark_text(color=COLOR_TEXTO, **texto_kw).encode(text="_etiqueta:N")
     capa = barras + textos
     presentes = set(datos[categoria])
@@ -439,7 +451,8 @@ def grafica_tipo(datos: pd.DataFrame, categoria: str, tipo: str, *, medida: str 
         vista = vista[vista[columna] > 0].nlargest(top, columna)
     grafica_barras(vista, categoria, columna, horizontal=horizontal, orden=orden,
                    titulo_valor=f"{NOMBRE_MEDIDA[medida]} {tipo}", color=COLOR_TIPO[tipo],
-                   altura=altura, dominio_max=dominio_max, estrecho=estrecho, marcas=marcas)
+                   altura=altura, dominio_max=dominio_max, estrecho=estrecho, marcas=marcas,
+                   colores=COLOR_NOMBRE_UNIDAD if categoria == "unidad" else None)
 
 
 MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
@@ -508,7 +521,9 @@ def graficas_versus(datos_por_linea: dict[str, pd.DataFrame], por: str, medida: 
 
 
 def selector_medida(clave: str) -> str:
-    medida = st.segmented_control("Medir en", ["creditos", "deliveries"], default="creditos", key=clave,
+    if st.session_state.get(clave) not in ("creditos", "deliveries"):
+        st.session_state[clave] = "creditos"
+    medida = st.segmented_control("Medir en", ["creditos", "deliveries"], key=clave,
                                   format_func=lambda m: NOMBRE_MEDIDA[m],
                                   help="Créditos muestra el costo; Entregas muestra cuántos mensajes recibieron "
                                        "las personas (WhatsApp cobra por mensaje entregado).")
@@ -608,6 +623,8 @@ def responsables_unidades() -> dict:
 _logo_acceso = imagen_html(RUTA_LOGO, marca["institucion"]) if RUTA_LOGO else ""
 CTX = S.puerta({u: L.NOMBRE_UNIDAD[u] for u in L.UNIDADES}, responsables_unidades(), marca, _logo_acceso)
 QUIEN = CTX["correo"]
+COLOR_UNIDAD = P.colores_unidades(CTX, list(L.UNIDADES))            # clave -> color (preferencia de cada persona)
+COLOR_NOMBRE_UNIDAD = {L.NOMBRE_UNIDAD[u]: c for u, c in COLOR_UNIDAD.items()}
 
 
 def subir_y_registrar(evento: str, detalle: str, *rutas: Path) -> None:
@@ -873,7 +890,6 @@ with st.sidebar:
         f'<div class="marca-area">{marca["area"]}</div>'
         f'<div class="marca-producto"><span class="marca-punto"></span>{marca["producto"]}</div></div>',
         unsafe_allow_html=True)
-    S.bloque_lateral(CTX)
 
     with st.container(key="lado-vista"):
         titulo_lado("visibility", "Vista", "Todo el Equipo CRM o una sola unidad" if CTX["admin"] else
@@ -962,12 +978,17 @@ with st.sidebar:
             "últimos 28 días, con las tarifas que rijan cada día.")
 
 
+S.menu_perfil(CTX)
 if "aviso_subida" in st.session_state:
     st.warning(st.session_state.pop("aviso_subida"), icon=":material/cloud_off:")
 if CTX["pruebas"]:
     st.markdown('<div class="modo-pruebas modo-pruebas-ancho">MODO PRUEBAS · No es el tablero publicado: aquí no '
                 'se pide iniciar sesión, tienes permisos del Equipo CRM y los cambios se guardan solo en esta '
                 'carpeta.</div>', unsafe_allow_html=True)
+# Mientras se ve Mi cuenta, Personalizar, Usuarios o Bitácora, los selectores del tablero no se dibujan y
+# Streamlit olvidaría su valor: se vuelven a asignar para que al volver el tablero siga como estaba.
+for _clave in [k for k in st.session_state.keys() if k in ("canal", "linea") or str(k).startswith(("medida_", "modo_proy_"))]:
+    st.session_state[_clave] = st.session_state[_clave]
 if S.pagina_actual(CTX, {u: L.NOMBRE_UNIDAD[u] for u in L.UNIDADES}, responsables_unidades()):
     st.stop()
 
@@ -1359,40 +1380,6 @@ def sin_datos_periodo() -> None:
             "Elige otro periodo en la barra lateral.", icon=":material/event_busy:")
 
 
-def bloque_efecto_tarifa(datos: pd.DataFrame) -> None:
-    """Separa, para cada cambio de tarifa del periodo, cuánto del consumo se debe a la tarifa y no al volumen."""
-    efectos = L.efecto_tarifas(datos, tarifas, inicio, fin_real)
-    if not efectos:
-        return
-    st.markdown("#### Efecto de los cambios de tarifa")
-    nota("Cuando cambia la tarifa, las mismas entregas pueden costar más o menos créditos. Aquí se compara lo "
-         "que se cobró desde cada cambio con lo que habrían costado esas mismas entregas con la tabla anterior. "
-         "En las gráficas de semana y mes, la línea punteada marca el cambio.")
-    for ef in efectos:
-        dif = ef["efecto"]
-        usd = usd_de(datos[(datos["fecha"] >= ef["desde"]) & (datos["fecha"] <= ef["hasta"])])
-        usd_ef = None if usd is None or ef["creditos"] == 0 else usd * dif / ef["creditos"]
-        pct_ef = dif / ef["con_tabla_anterior"] * 100 if ef["con_tabla_anterior"] else 0
-        sentido = "sumó" if dif > 0.5 else ("restó" if dif < -0.5 else "no cambió")
-        with st.container(border=True):
-            st.markdown(f'<div class="subtitulo-bloque">Tabla del {ef["desde"]:%d/%m/%Y}</div>', unsafe_allow_html=True)
-            k1, k2, k3 = st.columns(3)
-            k1.metric(f"Cobrado del {ef['desde']:%d/%m} al {ef['hasta']:%d/%m}", num(ef["creditos"]),
-                      help=f"{num(ef['entregas'])} entregas en ese tramo.")
-            k2.metric(f"Con la tabla anterior ({ef['tabla_anterior']:%d/%m/%Y})", num(ef["con_tabla_anterior"]))
-            k3.metric("Efecto de la tarifa", ("+" if dif > 0 else "") + num(dif) if abs(dif) >= 0.5 else "0",
-                      delta=(f"{pct_ef:+.1f} %".replace(".", ",") if abs(dif) >= 0.5 else None), delta_color="inverse",
-                      help="Créditos de más (o de menos) solo por el cambio de tarifa, con las mismas entregas.")
-            if abs(dif) >= 0.5:
-                texto_ef = f"El cambio de tarifa {sentido} {num(abs(dif))} créditos"
-                if usd_ef is not None:
-                    texto_ef += f" (≈ {txt_usd(abs(usd_ef))}{ESTIMADO_USD})"
-            else:
-                texto_ef = "El cambio de tarifa no cambió lo cobrado por estas entregas"
-            st.caption(texto_ef + ". El resto de la variación del consumo se debe a cuántas entregas hubo, "
-                       "no a la tarifa.")
-
-
 def cifras_periodo(datos: pd.DataFrame, clave: str, *, apilado: bool = False) -> None:
     t = L.totales(datos)
     if apilado:
@@ -1416,50 +1403,84 @@ def cifras_periodo(datos: pd.DataFrame, clave: str, *, apilado: bool = False) ->
 # Resumen
 # ---------------------------------------------------------------------------
 
+def punto_unidad(u: str) -> str:
+    return f'<span class="punto-unidad" style="background:{COLOR_UNIDAD.get(u, "#8A919C")}"></span>'
+
+
+def seccion_periodo(por_linea: dict) -> None:
+    st.markdown(f"### Consumo del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}")
+    nota(f"Lo que usó {texto_ambito} en el periodo consultado ({dias_periodo} "
+         f"{'día' if dias_periodo == 1 else 'días'} con datos). Para cambiarlo, usa «Periodo a consultar» en la barra lateral.")
+    if futuro:
+        st.info(f"El periodo llega hasta el {fin:%d/%m/%Y}, pero los datos reales van hasta el {fin_datos:%d/%m/%Y}. "
+                "Las cifras y gráficas del Resumen muestran solo lo real; lo estimado para después de esa "
+                "fecha está en las tarjetas de estado y en la pestaña Proyección.", icon=":material/update:")
+    if versus:
+        cols = st.columns(2)
+        for col, nombre_l in zip(cols, LINEAS_COMPRA):
+            with col:
+                st.markdown(f'<div class="subtitulo-bloque">Línea {nombre_l}</div>', unsafe_allow_html=True)
+                cifras_periodo(por_linea[nombre_l], f"res-{nombre_l}", apilado=True)
+    else:
+        cifras_periodo(periodo, "resumen")
+    nota("Utility tiene tarifas mucho más bajas que Marketing (en Colombia, 0,99 frente a 15,44 créditos por "
+         "mensaje): pesa poco en créditos aunque tenga entregas. Por eso cada tipo tiene su propia gráfica.")
+
+
+def seccion_gasto_unidad() -> None:
+    """Gasto en dólares de cada unidad en el periodo, con el color de cada unidad."""
+    st.markdown("### Gasto por unidad (USD)")
+    filas = []
+    for u in L.UNIDADES:
+        datos_u = periodo[periodo["unidad"] == u]
+        filas.append({"unidad": NOMBRE_UNIDAD_APP[u], "usd": usd_de(datos_u) or 0.0,
+                      "creditos": float(datos_u["creditos"].sum())})
+    tabla_u = pd.DataFrame(filas)
+    total = float(tabla_u["usd"].sum())
+    if total <= 0:
+        st.info("Sin gasto en el periodo, o falta el precio por 1.000 créditos (Todos los canales → Configuración).",
+                icon=":material/info:")
+        return
+    nota(f"Créditos usados en el periodo por el precio de cada línea{ESTIMADO_USD}. Total: {txt_usd(total)}.")
+    tabla_u["participacion"] = tabla_u["usd"] / total * 100
+    grafica_barras(tabla_u, "unidad", "usd", horizontal=True, titulo_valor="USD", colores=COLOR_NOMBRE_UNIDAD,
+                   formato=lambda v: f"{txt_usd(v)} · " + pct(float(v) / total, 0))
+
+
 if "Resumen" in tabs:
     with tabs["Resumen"]:
-        bloque_estado()
-
-        st.markdown(f"### Consumo del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}")
-        nota(f"Lo que usó {texto_ambito} en el periodo consultado ({dias_periodo} "
-             f"{'día' if dias_periodo == 1 else 'días'} con datos). Para cambiarlo, usa «Periodo a consultar» en la barra lateral.")
-        if futuro:
-            st.info(f"El periodo llega hasta el {fin:%d/%m/%Y}, pero los datos reales van hasta el {fin_datos:%d/%m/%Y}. "
-                    "Las cifras y gráficas de esta sección muestran solo lo real; lo estimado para después de esa "
-                    "fecha está en las tarjetas de estado y en la pestaña Proyección.", icon=":material/update:")
-        if periodo.empty:
-            sin_datos_periodo()
-        else:
-            por_linea = {n: filtrar(periodo, n) for n in LINEAS_COMPRA}
-            if versus:
-                cols = st.columns(2)
-                for col, nombre_l in zip(cols, LINEAS_COMPRA):
-                    with col:
-                        st.markdown(f'<div class="subtitulo-bloque">Línea {nombre_l}</div>', unsafe_allow_html=True)
-                        cifras_periodo(por_linea[nombre_l], f"res-{nombre_l}", apilado=True)
+        visibles = P.secciones_visibles(CTX, equipo=unidad_sel is None)
+        por_linea = {n: filtrar(periodo, n) for n in LINEAS_COMPRA}
+        medida = None
+        aviso_vacio = False
+        for sec in visibles:
+            if sec == "estado":
+                bloque_estado()
+                continue
+            if periodo.empty:
+                if not aviso_vacio:
+                    sin_datos_periodo()
+                    aviso_vacio = True
+                continue
+            if sec == "periodo":
+                seccion_periodo(por_linea)
+            elif sec == "gasto_unidad":
+                seccion_gasto_unidad()
             else:
-                cifras_periodo(periodo, "resumen")
-            nota("Utility tiene tarifas mucho más bajas que Marketing (en Colombia, 0,99 frente a 15,44 créditos por "
-                 "mensaje): pesa poco en créditos aunque tenga entregas. Por eso cada tipo tiene su propia gráfica.")
-            bloque_efecto_tarifa(periodo)
-
-            st.markdown("### Consumo en el tiempo")
-            medida = selector_medida("medida_resumen")
-            secciones = [("Por semana", "semana", False, None), ("Por mes", "mes", False, None),
-                         ("Países con mayor consumo", "nombre_pais", True, 10)]
-            if not unidad_sel:
-                secciones.append(("Consumo por unidad", "unidad", True, None))
-            for titulo_s, por, horizontal, top in secciones:
-                if titulo_s.startswith("Países"):
-                    st.markdown(f"### {titulo_s}")
-                elif titulo_s.startswith("Consumo por unidad"):
-                    st.markdown(f"### {titulo_s}")
-                else:
-                    st.markdown(f"#### {titulo_s}")
+                titulo_s, por, horizontal, top = {
+                    "semana": ("Consumo por semana", "semana", False, None),
+                    "mes": ("Consumo por mes", "mes", False, None),
+                    "paises": ("Países con mayor consumo", "nombre_pais", True, 10),
+                    "unidades": ("Consumo por unidad", "unidad", True, None)}[sec]
+                st.markdown(f"### {titulo_s}")
+                if medida is None:   # un solo selector, en la primera gráfica
+                    medida = selector_medida("medida_resumen")
                 if versus:
                     graficas_versus(por_linea, por, medida, horizontal=horizontal, top=top)
                 else:
                     graficas_por_tipo(periodo, por, medida, horizontal=horizontal, top=top)
+        st.caption("Puedes cambiar el orden de estas secciones, ocultarlas y elegir los colores de las unidades "
+                   "en el menú de tu perfil → Personalizar tablero.")
 
 
 # ---------------------------------------------------------------------------
@@ -1476,7 +1497,7 @@ if "Unidades" in tabs:
         filas_t = []
         for col, u in zip(cols, L.UNIDADES):
             e = estado_de(linea, u)
-            e["titulo"] = NOMBRE_UNIDAD_APP[u]
+            e["titulo"] = punto_unidad(u) + NOMBRE_UNIDAD_APP[u]
             with col:
                 tarjeta(e)
                 st.button(f"Ver la vista de {NOMBRE_UNIDAD_APP[u]}", key=f"vista_{u}", on_click=ir_a_vista,
@@ -1783,8 +1804,10 @@ if "Proyección" in tabs:
         nota(f"Qué pasaría con los créditos de {texto_ambito} si se sigue al mismo ritmo, desde el último día con "
              f"datos ({fin_datos:%d/%m/%Y}).")
         clave_p = f"{unidad_sel or 'crm'}"
+        if st.session_state.get(f"modo_proy_{clave_p}") not in ("ritmo", "journeys"):
+            st.session_state[f"modo_proy_{clave_p}"] = "ritmo"
         modo_proy = st.segmented_control(
-            "Cómo proyectar", ["ritmo", "journeys"], key=f"modo_proy_{clave_p}", default="ritmo",
+            "Cómo proyectar", ["ritmo", "journeys"], key=f"modo_proy_{clave_p}",
             format_func=lambda m: {"ritmo": "Con el ritmo actual", "journeys": "Eligiendo journeys"}[m],
             help="«Con el ritmo actual» usa todo lo que se envió en el periodo de referencia. «Eligiendo journeys» "
                  "deja quitar los journeys que ya no se van a usar y agregar journeys nuevos o de reemplazo.") or "ritmo"

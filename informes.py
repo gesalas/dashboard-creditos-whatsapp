@@ -207,9 +207,9 @@ def _firma(plantilla: dict, logo_src: str | None) -> str:
              f'<span style="color:{TEXTO};">{lineas}{correo_html}</span>')
     if logo_src:
         return (f'<table cellpadding="0" cellspacing="0" style="font-family:{FUENTE}; font-size:10.5pt;"><tr>'
-                f'<td style="padding:0 24px 0 0; vertical-align:middle;">'
-                f'<img src="{logo_src}" alt="{escape(f.get("institucion", ""))}" width="190" '
-                f'style="display:block; border:0; width:190px; height:auto;"></td>'
+                f'<td style="padding:0 18px 0 0; vertical-align:middle;">'
+                f'<img src="{logo_src}" alt="{escape(f.get("institucion", ""))}" width="120" '
+                f'style="display:block; border:0; width:120px; height:auto;"></td>'
                 f'<td style="vertical-align:middle;">{texto}</td></tr></table>')
     return f'<div style="font-family:{FUENTE}; font-size:10.5pt;">{texto}</div>'
 

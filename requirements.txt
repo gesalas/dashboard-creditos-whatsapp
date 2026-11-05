@@ -6,3 +6,4 @@ openpyxl
 bcrypt>=4.1
 requests
 pywin32; sys_platform == "win32"
+streamlit-sortables>=0.3.1

@@ -11,6 +11,9 @@ Modos:
 
 from __future__ import annotations
 
+import base64
+import html
+import io
 import os
 import sys
 from pathlib import Path
@@ -18,6 +21,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+from PIL import Image, ImageOps
 
 import acceso as A
 import almacen
@@ -491,58 +495,162 @@ def puerta(nombres: dict[str, str], responsables: dict, marca: dict, logo_html: 
 
 
 # ---------------------------------------------------------------------------
-# Barra lateral y páginas de cuenta
+# Menú de perfil (arriba a la derecha) y páginas de cuenta
 # ---------------------------------------------------------------------------
 
-PAGINAS = {"cuenta": "Mi cuenta", "usuarios": "Usuarios", "bitacora": "Bitácora"}
+PAGINAS = {"cuenta": "Mi cuenta", "personalizar": "Personalizar tablero", "usuarios": "Usuarios",
+           "bitacora": "Bitácora"}
+COLORES_INICIALES = ["#1F3864", "#2C6E91", "#5B4B8A", "#1E7B3C", "#8A5A00", "#7A2E3A", "#36586E"]
 
 
 def ir(pagina: str | None) -> None:
     st.session_state["pagina"] = pagina
 
 
-def bloque_lateral(ctx: dict) -> None:
-    """Tarjeta de la barra lateral con quién está viendo y los accesos a cuenta y administración."""
-    rol = "Permisos del Equipo CRM" if ctx["pruebas"] else ("Equipo CRM" if ctx["admin"] else
-                                                 f"{len(ctx['unidades'])} {'unidad' if len(ctx['unidades']) == 1 else 'unidades'}")
-    with st.container(key="lado-cuenta"):
-        st.markdown(f'<div class="lado-titulo"><span class="lado-icono">account_circle</span><div>'
-                    f'<div>{ctx["nombre"]}</div><div class="lado-sub">{rol}</div></div></div>',
-                    unsafe_allow_html=True)
-        pagina = st.session_state.get("pagina")
-        if pagina:
-            st.button("Volver al tablero", icon=":material/arrow_back:", width="stretch", type="primary",
-                      on_click=ir, args=(None,), key="volver_lado")
-        botones = [] if ctx["pruebas"] else [("cuenta", ":material/person:")]
-        pendientes = 0
-        if ctx["admin"]:
-            pendientes = len(A.solicitudes_pendientes())
-            botones += [("usuarios", ":material/group:"), ("bitacora", ":material/history:")]
-        for clave, icono in botones:
-            etiqueta = PAGINAS[clave]
-            if clave == "usuarios" and pendientes:
-                etiqueta += f" ({pendientes} por aprobar)"
-            st.button(etiqueta, icon=icono, width="stretch", key=f"ir_{clave}", on_click=ir, args=(clave,),
-                      disabled=pagina == clave)
-        if not ctx["pruebas"] and st.button("Cerrar sesión", icon=":material/logout:", width="stretch",
-                                            key="salir_lado"):
-            salir()
+def iniciales(nombre: str) -> str:
+    partes = [p for p in str(nombre or "").replace(".", " ").split() if p[:1].isalpha()]
+    return "".join(p[0] for p in partes[:2]).upper() or "?"
+
+
+def avatar_src(ctx: dict, perfil: dict | None = None) -> str:
+    """Foto de perfil (data URI) o, si no hay, un círculo con las iniciales."""
+    perfil = A.perfil(ctx["correo"]) if perfil is None else perfil
+    if perfil.get("avatar"):
+        return perfil["avatar"]
+    color = COLORES_INICIALES[sum(map(ord, ctx["correo"])) % len(COLORES_INICIALES)]
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">'
+           f'<circle cx="48" cy="48" r="48" fill="{color}"/><text x="48" y="49" text-anchor="middle" '
+           f'dominant-baseline="central" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="600" '
+           f'fill="#FFFFFF">{html.escape(iniciales(ctx["nombre"]))}</text></svg>')
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")
+
+
+def preparar_foto(archivo) -> str:
+    """Recorta la imagen al centro en cuadrado, la reduce a 160 px y la devuelve como data URI (JPEG)."""
+    imagen = Image.open(archivo)
+    imagen = ImageOps.exif_transpose(imagen).convert("RGB")
+    lado = min(imagen.size)
+    x, y = (imagen.width - lado) // 2, (imagen.height - lado) // 2
+    imagen = imagen.crop((x, y, x + lado, y + lado)).resize((160, 160), Image.LANCZOS)
+    salida = io.BytesIO()
+    imagen.save(salida, format="JPEG", quality=86, optimize=True)
+    return "data:image/jpeg;base64," + base64.b64encode(salida.getvalue()).decode("ascii")
+
+
+CSS_MENU = """
+<style>
+.st-key-menu-perfil {position: fixed; top: 0.55rem; right: 3.6rem; z-index: 999992; width: auto !important;}
+.st-key-menu-perfil [data-testid="stPopover"] > div > button,
+.st-key-menu-perfil [data-testid="stPopoverButton"] {
+  border-radius: 999px; padding: 3px 12px 3px 4px; min-height: 0; height: 42px; gap: 8px;
+  background: #FFFFFF; border: 1px solid #DDE2EA; box-shadow: 0 1px 2px rgba(16,24,40,.06);}
+.st-key-menu-perfil [data-testid="stPopover"] > div > button:hover,
+.st-key-menu-perfil [data-testid="stPopoverButton"]:hover {border-color: #1F3864;}
+.st-key-menu-perfil button p {font-size: 0.86rem; font-weight: 600; color: #1B1F24;}
+.st-key-menu-perfil button::before {content: ""; width: 34px; height: 34px; border-radius: 50%;
+  background: var(--avatar) center / cover no-repeat; flex: 0 0 34px;}
+.perfil-cabeza {display: flex; gap: 12px; align-items: center; padding: 2px 0 10px 0;
+  border-bottom: 1px solid #ECEFF4; margin-bottom: 6px;}
+.perfil-cabeza img {width: 52px; height: 52px; border-radius: 50%; object-fit: cover;}
+.perfil-nombre {font-weight: 650; font-size: 0.98rem; color: #1B1F24; line-height: 1.2;}
+.perfil-correo {font-size: 0.8rem; color: #5F6773;}
+.perfil-rol {display: inline-block; margin-top: 4px; font-size: 0.72rem; font-weight: 600; color: #1F3864;
+  background: #EEF3FA; border-radius: 999px; padding: 1px 8px;}
+.st-key-menu-opciones button {justify-content: flex-start !important; border: 0; padding-left: 8px; min-height: 2.3rem;}
+.st-key-menu-opciones button > div, .st-key-menu-opciones button span {justify-content: flex-start !important;}
+.st-key-menu-opciones [data-testid="stVerticalBlock"] {gap: 0.15rem;}
+.st-key-menu-opciones button:hover {background: #F3F5F9;}
+.cuenta-foto img {width: 96px; height: 96px; border-radius: 50%; object-fit: cover; border: 3px solid #EEF3FA;}
+</style>
+"""
+
+
+def rol_texto(ctx: dict) -> str:
+    if ctx["pruebas"]:
+        return "Modo pruebas · Equipo CRM"
+    if ctx["admin"]:
+        return "Equipo CRM"
+    n = len(ctx["unidades"])
+    return f"{n} {'unidad' if n == 1 else 'unidades'}"
+
+
+def menu_perfil(ctx: dict) -> None:
+    """Botón con la foto y el nombre arriba a la derecha; al abrirlo, las opciones de la cuenta."""
+    perfil = A.perfil(ctx["correo"])
+    src = avatar_src(ctx, perfil)
+    st.markdown(CSS_MENU + f"<style>.st-key-menu-perfil {{--avatar: url('{src}');}}</style>",
+                unsafe_allow_html=True)
+    pendientes = len(A.solicitudes_pendientes()) if ctx["admin"] else 0
+    primer = str(ctx["nombre"]).split()[0] if ctx["nombre"] else ""
+    with st.container(key="menu-perfil"):
+        with st.popover(primer + (f" ({pendientes})" if pendientes else ""), width="content"):
+            st.markdown(f'<div class="perfil-cabeza"><img src="{src}" alt=""><div>'
+                        f'<div class="perfil-nombre">{html.escape(ctx["nombre"])}</div>'
+                        f'<div class="perfil-correo">{html.escape(ctx["correo"]) if not ctx["pruebas"] else "Sin inicio de sesión"}</div>'
+                        f'<span class="perfil-rol">{rol_texto(ctx)}</span></div></div>', unsafe_allow_html=True)
+            opciones = ([] if ctx["pruebas"] else [("cuenta", ":material/person:")]) + [("personalizar", ":material/tune:")]
+            if ctx["admin"]:
+                opciones += [("usuarios", ":material/group:"), ("bitacora", ":material/history:")]
+            with st.container(key="menu-opciones"):
+                if st.session_state.get("pagina"):
+                    st.button("Volver al tablero", icon=":material/space_dashboard:", width="stretch",
+                              on_click=ir, args=(None,), key="menu_volver", type="tertiary")
+                for clave, icono in opciones:
+                    etiqueta = PAGINAS[clave] + (f" · {pendientes} por aprobar" if clave == "usuarios" and pendientes else "")
+                    st.button(etiqueta, icon=icono, width="stretch", key=f"menu_{clave}", on_click=ir, args=(clave,),
+                              type="tertiary")
+                if not ctx["pruebas"] and st.button("Cerrar sesión", icon=":material/logout:", width="stretch",
+                                                    key="menu_salir", type="tertiary"):
+                    salir()
 
 
 def pagina_actual(ctx: dict, nombres: dict[str, str], responsables: dict) -> bool:
-    """Dibuja Mi cuenta / Usuarios / Bitácora si están abiertas. True si se dibujó alguna."""
+    """Dibuja Mi cuenta / Personalizar / Usuarios / Bitácora si están abiertas. True si se dibujó alguna."""
     mostrar_correos_simulados()
     pagina = st.session_state.get("pagina")
-    if pagina == "cuenta" and not ctx["pruebas"]:
-        pagina_cuenta(ctx, nombres, responsables)
-    elif pagina == "usuarios" and ctx["admin"]:
-        pagina_usuarios(ctx, nombres)
-    elif pagina == "bitacora" and ctx["admin"]:
-        pagina_bitacora(nombres)
-    else:
+    validas = {"personalizar"} | ({"cuenta"} if not ctx["pruebas"] else set()) | (
+        {"usuarios", "bitacora"} if ctx["admin"] else set())
+    if pagina not in validas:
         st.session_state.pop("pagina", None)
         return False
+    st.button("Volver al tablero", icon=":material/arrow_back:", on_click=ir, args=(None,), key="volver_pagina")
+    if pagina == "cuenta":
+        pagina_cuenta(ctx, nombres, responsables)
+    elif pagina == "personalizar":
+        import personalizar
+        personalizar.pagina(ctx, nombres)
+    elif pagina == "usuarios":
+        pagina_usuarios(ctx, nombres)
+    else:
+        pagina_bitacora(nombres)
     return True
+
+
+def seccion_foto(ctx: dict) -> None:
+    perfil = A.perfil(ctx["correo"])
+    st.markdown("### Foto de perfil")
+    c1, c2 = st.columns([1, 3], vertical_alignment="center")
+    c1.markdown(f'<div class="cuenta-foto"><img src="{avatar_src(ctx, perfil)}" alt="Foto de perfil"></div>',
+                unsafe_allow_html=True)
+    with c2:
+        n = st.session_state.setdefault("foto_perfil_n", 0)
+        archivo = st.file_uploader("Sube una foto (JPG o PNG)", type=["jpg", "jpeg", "png"], key=f"foto_perfil_{n}",
+                                   help="Se recorta al centro en cuadrado y se guarda pequeña (160 px).")
+        b1, b2 = st.columns(2)
+        if b1.button("Guardar foto", type="primary", disabled=archivo is None, width="stretch"):
+            try:
+                foto = preparar_foto(archivo)
+            except Exception:
+                st.error("No se pudo leer la imagen. Prueba con otro archivo JPG o PNG.")
+            else:
+                A.guardar_perfil(ctx["correo"], lambda p: p.update(avatar=foto), "Foto de perfil")
+                A.registrar("Cambia su foto de perfil", ctx["correo"])
+                st.session_state["foto_perfil_n"] = n + 1   # deja el selector de archivo vacío
+                st.toast("Foto guardada", icon=":material/check:")
+                st.rerun()
+        if b2.button("Quitar foto", disabled=not perfil.get("avatar"), width="stretch"):
+            A.guardar_perfil(ctx["correo"], lambda p: p.pop("avatar", None), "Quita foto de perfil")
+            st.rerun()
 
 
 def pagina_cuenta(ctx: dict, nombres: dict[str, str], responsables: dict) -> None:
@@ -551,6 +659,7 @@ def pagina_cuenta(ctx: dict, nombres: dict[str, str], responsables: dict) -> Non
     st.markdown("## Mi cuenta")
     c1, c2 = st.columns(2, gap="large")
     with c1:
+        seccion_foto(ctx)
         st.markdown("### Datos")
         st.markdown(f"- **Nombre:** {registro.get('nombre', '')}\n- **Correo:** {correo}\n"
                     f"- **Rol:** {'Equipo CRM (todas las unidades)' if ctx['admin'] else 'Usuario de unidad'}\n"

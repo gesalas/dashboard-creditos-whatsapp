@@ -329,7 +329,7 @@ def adquirido_al(config_compras: list[dict], linea: str, fecha: pd.Timestamp | N
 # ---------------------------------------------------------------------------
 
 CANALES = {"whatsapp": "WhatsApp", "correo": "Correo", "sms": "SMS"}
-PRECIOS_POR_DEFECTO = {"whatsapp": 4.0, "correo": None, "sms": None}   # USD por cada 1.000 créditos (editable)
+PRECIOS_POR_DEFECTO = {"whatsapp": 4.16, "correo": None, "sms": None}   # USD por cada 1.000 créditos (editable)
 
 
 def precios_canal(config: dict) -> dict[str, float | None]:
@@ -367,32 +367,6 @@ def precio_promedio(compras: list[dict], linea: str, precio_canal: float | None)
     if total > 0:
         return valor / total
     return precio_canal
-
-
-# ---------------------------------------------------------------------------
-# Efecto de los cambios de tarifa
-# ---------------------------------------------------------------------------
-
-def efecto_tarifas(envios: pd.DataFrame, tarifas: pd.DataFrame, inicio: pd.Timestamp,
-                   fin: pd.Timestamp) -> list[dict]:
-    """Para cada cambio de tarifa dentro de [inicio, fin]: lo cobrado con la tabla nueva frente a lo que
-    habrían costado las mismas entregas con la tabla anterior. La diferencia es el efecto de la tarifa
-    (no de que se haya enviado más o menos)."""
-    fechas = vigencias(tarifas)
-    resultado = []
-    for i, desde in enumerate(fechas):
-        if i == 0 or desde == pd.Timestamp.min or not (inicio <= desde <= fin):
-            continue
-        hasta = min(fin, fechas[i + 1] - pd.Timedelta(days=1)) if i + 1 < len(fechas) else fin
-        tramo = envios[(envios["fecha"] >= desde) & (envios["fecha"] <= hasta)]
-        if tramo.empty:
-            continue
-        real = float(tramo["creditos"].sum())
-        anterior = float(repreciar(tramo, tarifas, fechas[i - 1])["creditos"].sum())
-        resultado.append({"desde": desde, "hasta": hasta, "tabla_anterior": fechas[i - 1],
-                          "entregas": float(tramo["deliveries"].sum()), "creditos": real,
-                          "con_tabla_anterior": anterior, "efecto": real - anterior})
-    return resultado
 
 
 def journeys_sinteticos(nuevos: list[dict], inicio: pd.Timestamp, fin: pd.Timestamp) -> pd.DataFrame:
