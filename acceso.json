@@ -1,5 +1,5 @@
 {
   "nota": "Quién es del Equipo CRM (ve todo y aprueba cuentas). Solo se cambia aquí, nunca desde la app. Escribe los correos en minúscula, separados por coma.",
   "dominios": ["javeriana.edu.co"],
-  "equipo_crm": []
+  "equipo_crm": ["gesalas@javeriana.edu.co", "jsebastian.cruz@javeriana.edu.co"]
 }
