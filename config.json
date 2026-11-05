@@ -6,6 +6,8 @@
   "general": {"creditos_totales": 21935456, "unidades": {"MERCA": 15788323, "EGRES": 30000, "DONAC": 20000}},
   "ucp": {"creditos_totales": 4630000, "unidades": {"MERCA": 4630000, "EGRES": 0, "DONAC": 0}},
   "outbound": {"creditos_totales": 20643000, "unidades": {"MERCA": 14495867, "EGRES": 30000, "DONAC": 20000}},
+  "precios_usd_1000": {"whatsapp": 4.16, "correo": null, "sms": null},
+  "precios_confirmados": {"whatsapp": true, "correo": false, "sms": false},
   "unidades": [
     {"clave": "mercadeo", "nombre": "Mercadeo", "codigo": "MERCA", "prefijos": ["MERCA"]},
     {"clave": "egresados", "nombre": "Egresados", "codigo": "EGRES", "prefijos": ["EGRES"]},
