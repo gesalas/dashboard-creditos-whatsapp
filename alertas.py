@@ -435,6 +435,68 @@ def responsables_de(cfg_alertas: dict, unidad: str) -> list[str]:
     return list((cfg_alertas.get("unidades", {}).get("responsables", {}) or {}).get(unidad, []) or [])
 
 
+def suscriptores(unidad: str, *, umbral: float | None = None, rojo: float = 95.0, semanal: bool = False) -> list[str]:
+    """Personas con cuenta que pidieron estas alertas en Mi cuenta (además de los responsables de alertas.json).
+
+    En Mi cuenta cada persona elige: recibir las alertas de sus unidades (todas o solo las críticas) y el resumen
+    semanal. Se leen de usuarios.json y perfiles.json (en local o en GitHub, igual que la app)."""
+    try:
+        import acceso as A
+        lista = []
+        for correo, r in A.usuarios(fresco=True).items():
+            if r.get("estado") != "activo" or not (unidad in r.get("unidades", []) or A.es_admin(correo)):
+                continue
+            pref = (A.perfil(correo) or {}).get("alertas") or {}
+            if semanal:
+                if pref.get("semanal"):
+                    lista.append(correo)
+            elif pref.get("unidades") and (pref.get("nivel") != "criticas" or (umbral or 0) >= rojo):
+                lista.append(correo)
+        return lista
+    except Exception as error:   # sin cuentas (o sin acceso a GitHub) solo se usan los responsables
+        log.warning("No se pudieron leer las suscripciones de las cuentas: %s", error)
+        return []
+
+
+def destinatarios_de(cfg_alertas: dict, unidad: str, *, umbral: float | None = None, rojo: float = 95.0,
+                  semanal: bool = False) -> list[str]:
+    """Responsables de la unidad (alertas.json) más las personas suscritas, sin repetir."""
+    base = responsables_de(cfg_alertas, unidad) if not semanal or (
+        cfg_alertas.get("unidades", {}).get("resumen_semanal", {}).get("activo")) else []
+    vistos, salida = set(), []
+    for c in base + suscriptores(unidad, umbral=umbral, rojo=rojo, semanal=semanal):
+        if c.lower() not in vistos:
+            vistos.add(c.lower())
+            salida.append(c)
+    return salida
+
+
+def avisos_de_datos(estado: dict) -> list[str]:
+    """Problemas de los reportes y remitentes de correo sin unidad: se avisan una vez al día."""
+    avisos = []
+    estado.setdefault("avisos_extra", {})
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    for problema in L.validar_reportes(CARPETA):
+        clave = f"reporte|{problema}|{hoy}"
+        if clave not in estado.setdefault("avisos_extra", {}):
+            avisos.append((clave, problema))
+    try:
+        config = L.leer_config(CARPETA / "config.json")
+        envios_c, _ = L.leer_reporte_correo(CARPETA / "data_correo.xlsx")
+        pend = L.remitentes_pendientes(L.preparar_correo(envios_c, config))
+        nuevos = [r for r in pend["remitente"] if f"remitente|{r}" not in estado["avisos_extra"]]
+        if nuevos:
+            avisos.append((["remitente|" + r for r in nuevos],
+                           f"Hay {len(nuevos)} {'remitente nuevo' if len(nuevos) == 1 else 'remitentes nuevos'} de correo "
+                           f"sin unidad: {', '.join(nuevos[:8])}{'…' if len(nuevos) > 8 else ''}. Asígnalos en el "
+                           "dashboard: Correo → Remitentes."))
+    except FileNotFoundError:
+        pass
+    except Exception as error:
+        log.warning("No se pudieron revisar los remitentes de correo: %s", error)
+    return avisos
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Alertas de consumo de créditos de WhatsApp.")
     parser.add_argument("--simular", action="store_true", help="Muestra qué enviaría, sin enviar.")
@@ -547,16 +609,21 @@ def main(argv: list[str] | None = None) -> int:
             aviso_reporte = (f"El reporte data.xlsx tiene {dias} días de generado: el consumo real puede ser "
                              "mayor al calculado. Actualiza el reporte desde Marketing Cloud.")
 
-    # Resumen semanal por unidad (opcional)
+    # Problemas de los reportes y remitentes de correo nuevos (una vez al día / una vez por remitente)
+    extras = avisos_de_datos(estado)
+    aviso_desactualizado = bool(aviso_reporte)
+    if extras:
+        aviso_reporte = " ".join([aviso_reporte or ""] + [t for _, t in extras]).strip()
+
+    # Resumen semanal por unidad: a los responsables (si está activo en alertas.json) y a quien lo pidió en Mi cuenta
     resumenes = []
     cfg_resumen = cfg_unidades.get("resumen_semanal", {})
-    if cfg_unidades.get("activo") and cfg_resumen.get("activo"):
-        hoy = datetime.now()
-        dia = DIAS_SEMANA.get(str(cfg_resumen.get("dia", "lunes")).lower(), 0)
-        semana = f"{hoy.isocalendar()[0]}-W{hoy.isocalendar()[1]:02d}"
-        if hoy.weekday() == dia:
-            resumenes = [u for u in L.UNIDADES
-                         if responsables_de(cfg_alertas, u) and f"{u}|{semana}" not in estado["resumenes"]]
+    hoy = datetime.now()
+    dia = DIAS_SEMANA.get(str(cfg_resumen.get("dia", "lunes")).lower(), 0)
+    semana = f"{hoy.isocalendar()[0]}-W{hoy.isocalendar()[1]:02d}"
+    if cfg_unidades.get("activo", True) and hoy.weekday() == dia:
+        resumenes = [u for u in L.UNIDADES
+                     if destinatarios_de(cfg_alertas, u, semanal=True) and f"{u}|{semana}" not in estado["resumenes"]]
 
     if not pendientes and not aviso_reporte and not resumenes:
         log.info("Sin alertas nuevas.")
@@ -572,10 +639,11 @@ def main(argv: list[str] | None = None) -> int:
             print(cuerpo)
         for a in pend_unidades:
             asunto, _, _ = informe(a["unidad"], "alerta")
-            destino = ", ".join(responsables_de(cfg_alertas, a["unidad"])) or "sin responsables (solo aviso general)"
+            destino = ", ".join(destinatarios_de(cfg_alertas, a["unidad"], umbral=a["umbral"], rojo=rojo)) \
+                or "sin responsables (solo aviso general)"
             print(f"\nCorreo a {destino}: {asunto}")
         for u in resumenes:
-            print(f"\nResumen semanal a {', '.join(responsables_de(cfg_alertas, u))}: {NOMBRE_UNIDAD[u]}")
+            print(f"\nResumen semanal a {', '.join(destinatarios_de(cfg_alertas, u, semanal=True))}: {NOMBRE_UNIDAD[u]}")
         return 0
 
     ahora = datetime.now().isoformat(timespec="seconds")
@@ -584,14 +652,14 @@ def main(argv: list[str] | None = None) -> int:
     # 1) Correo de cada unidad a sus responsables
     unidades_enviadas = set()
     for a in pend_unidades:
-        destinatarios = responsables_de(cfg_alertas, a["unidad"])
-        if not destinatarios or not outlook_activo:
+        para = destinatarios_de(cfg_alertas, a["unidad"], umbral=a["umbral"], rojo=rojo)
+        if not para or not outlook_activo:
             continue
         asunto, texto, html = informe(a["unidad"], "alerta")
         try:
-            enviar_outlook(destinatarios, asunto, texto, html, imagenes)
+            enviar_outlook(para, asunto, texto, html, imagenes)
             unidades_enviadas.add(a["unidad"])
-            log.info("Alerta de %s enviada a %s.", NOMBRE_UNIDAD[a["unidad"]], ", ".join(destinatarios))
+            log.info("Alerta de %s enviada a %s.", NOMBRE_UNIDAD[a["unidad"]], ", ".join(para))
         except Exception as error:
             resultado = 1
             log.error("No se pudo enviar la alerta de %s: %s", NOMBRE_UNIDAD[a["unidad"]], error)
@@ -600,7 +668,7 @@ def main(argv: list[str] | None = None) -> int:
     for u in resumenes:
         asunto, texto, html = informe(u, "resumen")
         try:
-            enviar_outlook(responsables_de(cfg_alertas, u), asunto, texto, html, imagenes)
+            enviar_outlook(destinatarios_de(cfg_alertas, u, semanal=True), asunto, texto, html, imagenes)
             estado["resumenes"][f"{u}|{semana}"] = {"fecha": ahora}
             log.info("Resumen semanal de %s enviado.", NOMBRE_UNIDAD[u])
         except Exception as error:
@@ -621,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
     # unidad no tiene responsable y salió el aviso general. Las de línea, si salió el aviso general.
     for a in pendientes:
         if a["tipo"] == "unidad":
-            tiene_responsable = bool(responsables_de(cfg_alertas, a["unidad"])) and outlook_activo
+            tiene_responsable = bool(destinatarios_de(cfg_alertas, a["unidad"], umbral=a["umbral"], rojo=rojo)) and outlook_activo
             registrar = a["unidad"] in unidades_enviadas or (not tiene_responsable and exitosos)
             canales = ["outlook_unidad"] if a["unidad"] in unidades_enviadas else exitosos
         else:
@@ -630,8 +698,12 @@ def main(argv: list[str] | None = None) -> int:
             for u in a["umbrales_nuevos"]:
                 estado["enviadas"][f"{a['nombre']}|{u}|{a['disponible']:.0f}"] = {
                     "fecha": ahora, "uso_pct": round(a["uso_pct"], 2), "canales": canales}
-    if aviso_reporte and exitosos:
+    if aviso_desactualizado and exitosos:
         estado["avisos_reporte"][info["generado"]] = {"fecha": ahora, "canales": exitosos}
+    if extras and exitosos:
+        for clave, _ in extras:
+            for k in (clave if isinstance(clave, list) else [clave]):
+                estado["avisos_extra"][k] = {"fecha": ahora}
     guardar_json(RUTA_ESTADO, estado)
     return resultado
 

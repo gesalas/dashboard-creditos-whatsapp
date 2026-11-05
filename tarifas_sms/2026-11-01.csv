@@ -1,0 +1,13 @@
+ISO,Country,Tipo de número,Multiplier
+CO,Colombia,Short code / 1-way Intl Long code,0.74
+US,United States,Short Code,5.55
+CA,Canada,Short Code,9
+MX,Mexico,1-way Intl Long code,12.17
+PE,Peru,1-way Intl Long code,116
+EC,Ecuador,1-way Intl Long code,144
+CL,Chile,Long code / 1-way Intl Long code,14.38
+AR,Argentina,1-way Intl Long code,95
+PA,Panama,1-way Intl Long code,101
+VE,Venezuela,1-way Intl Long code,202
+ES,Spain,Alpha / Long Code / Short Code / 1-way Intl Long code,28.46
+OTHER,Otros países,Cualquiera,80

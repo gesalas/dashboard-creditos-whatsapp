@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import sys
 import unicodedata
 from datetime import date
 from pathlib import Path
@@ -20,7 +21,15 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+import acceso as A
+import almacen
+import estilos as E
+import guia as G
+import novedades as N
 import logica as L
+import personalizar as P
+import temas as T
+import sesion as S
 
 CARPETA = Path(__file__).parent
 RUTA_REPORTE = CARPETA / "data.xlsx"
@@ -73,181 +82,8 @@ SEMAFORO = {
     "sin_definir": {"fondo": "#F3F5F9", "borde": "#52514E", "barra": "#8C8C88", "etiqueta": "Sin asignación"},
 }
 
-st.markdown(
-    """
-    <style>
-    .block-container {padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1400px;}
-    [data-testid="stMetric"] {
-        background: #FFFFFF;
-        border: 1px solid #E3E7EE;
-        border-radius: 10px;
-        padding: 14px 16px 12px 16px;
-    }
-    [data-testid="stMetricLabel"] p {color: #52514e; font-size: 0.85rem;}
-    [data-testid="stMetricValue"] {font-size: 1.65rem; font-weight: 600;}
-    .stTabs [data-baseweb="tab-list"] {gap: 4px; border-bottom: 1px solid #E3E7EE;}
-    .stTabs [data-baseweb="tab"] {padding: 8px 16px; font-weight: 500;}
-    h1 {font-weight: 650; letter-spacing: -0.01em;}
-    h3 {font-weight: 600; margin-top: 0.6rem;}
-    .nota {color: #52514e; font-size: 0.88rem; margin: -0.4rem 0 0.8rem 0;}
-    .semaforo {display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 0.6rem 0 1.2rem 0;}
-    .semaforo-item {border-radius: 12px; padding: 16px 18px 14px 18px; border: 1px solid; border-left-width: 6px;}
-    .semaforo-cabecera {display: flex; justify-content: space-between; align-items: center; gap: 8px;}
-    .semaforo-titulo {font-size: 0.95rem; color: #1B1F24; font-weight: 600;}
-    .semaforo-valor {font-size: 2.6rem; font-weight: 700; color: #1B1F24; line-height: 1.1; margin: 6px 0 10px 0;}
-    .semaforo-valor small {display: block; white-space: nowrap; font-size: 0.85rem; font-weight: 500; color: #52514e;
-                           margin: 2px 0 0 1px; line-height: 1.2;}
-    .medidor {position: relative; height: 16px; background: #E3E7EE; border-radius: 999px; overflow: visible;}
-    .medidor-relleno {height: 100%; border-radius: 999px;}
-    .medidor-marca {position: absolute; top: -4px; bottom: -4px; width: 2px; background: #1B1F24; opacity: 0.55;}
-    .medidor-escala {position: relative; height: 16px; font-size: 0.72rem; color: #52514e; margin: 3px 0 12px 0;}
-    .medidor-escala span {position: absolute; transform: translateX(-50%); white-space: nowrap;}
-    .semaforo-cifras {display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 10px;}
-    .cifra-etiqueta {font-size: 0.75rem; color: #52514e;}
-    .cifra-valor {font-size: 1.05rem; font-weight: 650; color: #1B1F24;}
-    .desglose {display: flex; gap: 8px; flex-wrap: wrap; margin: -4px 0 14px 0;}
-    .chip {padding: 4px 12px; border-radius: 999px; font-size: 0.82rem; border: 1px solid;}
-    .chip-mkt {background: #EAF2FC; color: #1C5CAB; border-color: #B7D3F6;}
-    .chip-uti {background: #FDEEE6; color: #A8441A; border-color: #F6C8B2;}
-    .subtitulo-bloque {font-size: 0.8rem; font-weight: 700; color: #52514e; letter-spacing: 0.05em;
-                       text-transform: uppercase; margin: 6px 0 6px 0;}
-    .subtitulo {display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px;}
-    .frescura, .frescura-alerta, .pastilla {font-size: 0.82rem; border-radius: 999px; padding: 3px 10px;
-                                            border: 1px solid #E3E7EE; background: #F3F5F9; color: #1B1F24;}
-    .frescura {background: #E8F5EC; border-color: #B9DEC5; color: #1E7B3C; font-weight: 600;}
-    .frescura-alerta {background: #FFF6DB; border-color: #F0D58A; color: #8A6100; font-weight: 600;}
-    .leyenda {display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin: 14px 0 2px 0;
-              font-size: 0.85rem; color: #52514e;}
-    .leyenda .insignia {margin-left: 0; margin-right: 4px;}
-    .leyenda-titulo {font-weight: 700; color: #1B1F24;}
-    .leyenda-nota {font-style: italic;}
-    @media (max-width: 640px) {
-        .titulo-texto {font-size: 1.75rem;}
-        .titulo-icono img, .titulo-icono svg {width: 36px; height: 36px;}
-        .semaforo-valor {font-size: 2.1rem;}
-    }
-    .semaforo-detalle .semaforo-cifras {grid-template-columns: 1fr 1fr;}
-    .semaforo-detalle .semaforo-valor {font-size: 3rem;}
-    .panel-unidades {border: 1px solid #E3E7EE; border-radius: 12px; padding: 14px 16px; background: #FFFFFF;
-                     margin: 0.6rem 0 1rem 0;}
-    .panel-titulo {font-size: 0.95rem; font-weight: 600; color: #1B1F24; margin-bottom: 8px;}
-    .unidad-fila {padding: 10px 0; border-top: 1px solid #F0F2F6;}
-    .unidad-fila:first-of-type {border-top: none;}
-    .unidad-cabecera {display: flex; align-items: center; gap: 4px; margin-bottom: 6px;}
-    .unidad-nombre {font-weight: 600; color: #1B1F24;}
-    .unidad-pct {margin-left: auto; font-weight: 700; color: #1B1F24;}
-    .unidad-detalle {font-size: 0.78rem; color: #52514e; margin-top: 6px;}
-    .unidad-fila .medidor {height: 10px;}
-    .unidad-fila .medidor-marca {top: -3px; bottom: -3px;}
-    .franja-titulo {font-size: 0.8rem; font-weight: 700; color: #52514e; letter-spacing: 0.05em;
-                    text-transform: uppercase; padding-top: 9px;}
-    .titulo {display: flex; align-items: center; gap: 14px; margin: 0 0 4px 0;}
-    .titulo-icono img, .titulo-icono svg {width: 46px; height: 46px; display: block;}
-    .titulo-texto {font-size: 2.35rem; font-weight: 700; color: #1B1F24; letter-spacing: -0.01em; line-height: 1.15;}
-    .insignia {display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 0.78rem;
-               font-weight: 650; text-transform: uppercase; letter-spacing: 0.02em; margin-left: 8px;
-               vertical-align: middle;}
-    .titulo-tipo {font-size: 0.95rem; font-weight: 650; color: #1B1F24; padding: 2px 0 2px 10px;
-                  border-left: 4px solid; margin: 14px 0 2px 0;}
-    .tipo-mkt {border-color: #2a78d6;}
-    .tipo-uti {border-color: #eb6834;}
-    .tipo-mkt-texto {color: #1C5CAB;}
-    .tipo-uti-texto {color: #A8441A;}
-    [class*="st-key-caja-mkt"] {border: 2px solid #2a78d6 !important; border-radius: 12px;}
-    [class*="st-key-caja-uti"] {border: 2px solid #eb6834 !important; border-radius: 12px;}
-    [class*="st-key-caja-mkt"] [data-testid="stMetric"] {border-color: #9DC1EE;}
-    [class*="st-key-caja-"] [data-testid="stMetricValue"] {font-size: 1.4rem;}
-    [class*="st-key-caja-uti"] [data-testid="stMetric"] {border-color: #F4BBA0;}
-    .cifra-valor small {font-size: 0.78rem; font-weight: 500; color: #52514e;}
-    .cifra-sub {font-size: 0.8rem; font-weight: 500; color: #52514e;}
-    .cifra-mkt {color: #1C5CAB; font-weight: 700; border-left: 3px solid #2a78d6; padding-left: 6px;}
-    .cifra-uti {color: #A8441A; font-weight: 700; border-left: 3px solid #eb6834; padding-left: 6px;}
-    .stTabs [data-baseweb="tab-list"] {position: sticky; top: 2.9rem; z-index: 5; background: var(--background-color, #FFFFFF);}
-    [data-testid="stSidebar"] {background: #F4F6FA; border-right: 1px solid #E3E7EE;}
-    [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {padding-top: 0.25rem;}
-    .marca {background: linear-gradient(160deg, #1F3864 0%, #2C4F8C 100%); border-radius: 14px;
-            padding: 18px 16px 14px 16px; margin: 0 0 14px 0; color: #FFFFFF; text-align: left;
-            box-shadow: 0 6px 18px rgba(31, 56, 100, 0.18);}
-    .marca-logo {background: #FFFFFF; border-radius: 10px; padding: 8px 10px; margin: 0 0 12px 0; display: inline-block;}
-    .marca-logo img {max-height: 52px; max-width: 200px; display: block;}
-    .marca-institucion {font-size: 1.02rem; font-weight: 700; line-height: 1.25;}
-    .marca-area {font-size: 0.8rem; opacity: 0.8; margin-top: 3px;}
-    .marca-producto {display: inline-flex; align-items: center; gap: 7px; font-size: 0.74rem; font-weight: 600;
-                     margin-top: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.12);
-                     letter-spacing: 0.04em; text-transform: uppercase;}
-    .marca-punto {width: 7px; height: 7px; border-radius: 50%; background: #3DDC84; display: inline-block;}
-    [class*="st-key-lado-"] {background: #FFFFFF; border: 1px solid #E3E7EE; border-radius: 14px;
-                             padding: 12px 12px 12px 12px; gap: 0.55rem; box-shadow: 0 1px 2px rgba(16,24,40,0.04);}
-    .lado-titulo {display: flex; align-items: center; gap: 10px; font-size: 0.86rem; font-weight: 700;
-                  color: #1B1F24; line-height: 1.2;}
-    .lado-icono {font-family: "Material Symbols Rounded"; font-size: 18px; line-height: 1; color: #1F3864;
-                 background: #EAF0FA; border-radius: 9px; padding: 6px; font-weight: normal;
-                 font-variation-settings: "FILL" 0, "wght" 500;}
-    .lado-sub {font-size: 0.74rem; font-weight: 500; color: #6B6F76; margin-top: 2px;}
-    .lado-nota {font-size: 0.72rem; color: #6B6F76; line-height: 1.35;}
-    [class*="st-key-lado-"] .stMarkdown [data-testid="stMarkdownContainer"] {margin-bottom: 0;}
-    [class*="st-key-lado-linea"] [data-testid="stElementContainer"],
-    [class*="st-key-lado-linea"] [data-testid="stRadio"],
-    [class*="st-key-lado-linea"] [role="radiogroup"] {gap: 6px; width: 100% !important; display: flex; flex-direction: column;}
-    [class*="st-key-lado-linea"] [role="radiogroup"] > div {box-sizing: border-box; align-self: stretch;}
-    [class*="st-key-lado-linea"] [role="radiogroup"] > div {border: 1px solid #E3E7EE; border-radius: 10px;
-                             padding: 7px 10px 7px 10px; width: 100%; background: #FFFFFF; transition: all .12s;}
-    [class*="st-key-lado-linea"] [role="radiogroup"] > div:hover {border-color: #B9C6DC; background: #F8FAFD;}
-    [class*="st-key-lado-linea"] [role="radiogroup"] > div[data-selected="true"] {border-color: #1F3864;
-                             background: #EEF3FB; box-shadow: inset 3px 0 0 #1F3864;}
-    [class*="st-key-lado-linea"] [data-testid="stRadioOption"] {width: 100%; margin: 0;}
-    [class*="st-key-lado-linea"] [data-testid="stRadioOption"] p {font-weight: 600; color: #1B1F24; font-size: 0.88rem;}
-    [class*="st-key-lado-linea"] [data-testid="stRadioCaption"] {margin: 0 0 0 1.75rem; padding: 0;}
-    [class*="st-key-lado-linea"] [data-testid="stRadioCaption"] p {font-size: 0.72rem; color: #6B6F76; margin: 0;}
-    .periodo-resuelto {display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem;
-                       color: #1B1F24; background: #F4F6FA; border-radius: 8px; padding: 7px 10px; margin: 0;}
-    .periodo-resuelto b {font-weight: 650; color: #1F3864;}
-    .dato-fila {display: flex; justify-content: space-between; gap: 10px; font-size: 0.78rem; padding: 6px 0;
-                border-bottom: 1px dashed #E8EBF0; color: #6B6F76;}
-    .dato-fila:last-of-type {border-bottom: none;}
-    .dato-fila b {color: #1B1F24; font-weight: 600; text-align: right; display: inline-flex; align-items: center; gap: 6px;}
-    .punto-ok, .punto-alerta {width: 7px; height: 7px; border-radius: 50%; display: inline-block;}
-    .punto-ok {background: #2E9A4E;}
-    .punto-alerta {background: #D99A00;}
-    [data-testid="stSidebar"] [data-testid="stExpander"] details {background: #FFFFFF; border-radius: 14px;}
-    [class*="st-key-zona-canal"] {background: #FFFFFF; border: 1px solid #E3E7EE; border-radius: 14px;
-                                  padding: 14px 16px 12px 16px; margin: 10px 0 6px 0; gap: 0.35rem;
-                                  box-shadow: 0 1px 3px rgba(16,24,40,0.05);}
-    .zona-etiqueta {font-size: 0.78rem; font-weight: 700; color: #52514e; letter-spacing: 0.05em;
-                    text-transform: uppercase; margin: 2px 0 2px 2px;}
-    .zona-nota {font-size: 0.78rem; color: #6B6F76; margin: 0 0 2px 2px;}
-    [class*="st-key-zona-canal"] [role="radiogroup"] {gap: 10px; flex-wrap: wrap;}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"] {
-        border: 1.5px solid #C9D3E3 !important; border-radius: 12px !important; background: #FFFFFF;
-        padding: 10px 20px; min-height: 46px; box-shadow: 0 1px 2px rgba(16,24,40,0.06); transition: all .12s;}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"] p {font-size: 1rem; font-weight: 600;
-                                                                             color: #1B1F24;}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"]:hover {border-color: #1F3864 !important;
-                                                                                 background: #F3F6FB;}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"] {
-        background: #1F3864; border-color: #1F3864 !important; box-shadow: 0 3px 8px rgba(31,56,100,0.25);}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"] p,
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"] span {color: #FFFFFF;}
-    [class*="st-key-linea"] button[data-variant="segmented_control"] {min-height: 40px; padding: 7px 16px;}
-    [class*="st-key-zona-canal"] .stMarkdown [data-testid="stMarkdownContainer"] {margin-bottom: 0;}
-    [class*="st-key-zona-canal"] button[data-variant="segmented_control"][aria-checked="true"]:hover {
-        background: #2C4F8C; border-color: #2C4F8C !important;}
-    [class*="st-key-linea"] button[data-variant="segmented_control"] p {font-size: 0.93rem;}
-    .barra-canales {display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: #E3E7EE;
-                    margin: 6px 0 8px 0;}
-    .barra-canales .seg {height: 100%;}
-    .leyenda-canales {display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85rem; color: #52514e;
-                      margin-bottom: 14px;}
-    .leyenda-canales i {display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px;}
-    .leyenda-canales b {color: #1B1F24;}
-    .cifra-grande {font-size: 1.9rem; font-weight: 700; color: #1B1F24; margin: 2px 0 0 0;}
-    .cifra-grande small {font-size: 0.95rem; font-weight: 500; color: #52514e;}
-    .canal-pendiente {background: #F8F9FB; border-left-width: 6px; min-height: 170px;}
-    .pendiente-texto {font-size: 0.88rem; color: #52514e; margin-top: 14px; line-height: 1.45;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown("<style>" + T.variables(T.resolver(T.PREDETERMINADO)) + "</style>", unsafe_allow_html=True)
+st.markdown(E.BASE, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
@@ -341,13 +177,14 @@ def marcas_tarifa(por: str) -> list[tuple[str, str]]:
 
 EJE_NUMERO = "replace(format(datum.value, ',.0f'), regexp(',', 'g'), '.')"
 TIPOS = ("Marketing", "Utility")
-COLOR_TIPO = {"Marketing": COLOR_MARKETING, "Utility": COLOR_UTILITY}
+COLOR_TIPO = {"Marketing": COLOR_MARKETING, "Utility": COLOR_UTILITY}   # se actualiza con el tema
 CLASE_TIPO = {"Marketing": "mkt", "Utility": "uti"}
 NOMBRE_MEDIDA = {"creditos": "Créditos", "deliveries": "Entregas"}
 
 
 def _config_grafica(chart: alt.Chart, altura: int) -> alt.Chart:
     return (chart.properties(height=altura or "auto")
+                 .configure(background="transparent")
                  .configure_view(strokeWidth=0)
                  .configure_axis(labelColor=COLOR_TEXTO_SEC, titleColor=COLOR_TEXTO_SEC,
                                  gridColor=COLOR_GRILLA, domainColor=COLOR_GRILLA, tickColor=COLOR_GRILLA,
@@ -359,8 +196,11 @@ def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizonta
                    orden: str | list | None = None, titulo_valor: str = "Créditos",
                    altura: int | None = None, color: str = COLOR_SERIE,
                    dominio_max: float | None = None, estrecho: bool = False,
-                   marcas: list[tuple[str, str]] | None = None) -> None:
+                   marcas: list[tuple[str, str]] | None = None, colores: dict[str, str] | None = None,
+                   formato=None) -> None:
     """Barras de una sola serie con el valor escrito sobre cada barra.
+
+    `colores`: {categoría: color} para pintar cada barra con su color (por ejemplo, el de cada unidad).
 
     `marcas`: [(categoría, texto)] para dibujar una línea vertical punteada (por ejemplo, cambios de tarifa).
 
@@ -372,7 +212,7 @@ def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizonta
         st.info("Sin datos para el periodo seleccionado.")
         return
     datos = datos.copy()
-    datos["_etiqueta"] = datos[valor].apply(num)
+    datos["_etiqueta"] = datos[valor].apply(formato or num)
     n = len(datos)
     maximo = float(dominio_max if dominio_max is not None else datos[valor].max()) or 1.0
     orden_eje = orden if orden is not None else ("-x" if horizontal else "-y")
@@ -381,7 +221,7 @@ def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizonta
                else alt.Axis(title=None, labelAngle=-90, labelOverlap=False, labelFontSize=11 if n <= 30 else 9))
     eje_val = alt.Axis(title=titulo_valor, labelExpr=EJE_NUMERO, tickCount=5)
     if horizontal:
-        escala = alt.Scale(domain=[0, maximo * 1.16])
+        escala = alt.Scale(domain=[0, maximo * (1.4 if formato else 1.16)])
         x = alt.X(f"{valor}:Q", axis=eje_val, scale=escala)
         y = alt.Y(f"{categoria}:N", sort=orden_eje, axis=eje_cat)
         texto_kw = {"align": "left", "baseline": "middle", "dx": 4, "fontSize": 11}
@@ -399,7 +239,13 @@ def grafica_barras(datos: pd.DataFrame, categoria: str, valor: str, *, horizonta
         x=x, y=y,
         tooltip=[alt.Tooltip(f"{categoria}:N", title=" "), alt.Tooltip("_etiqueta:N", title=titulo_valor)],
     )
-    barras = base.mark_bar(color=color, cornerRadiusEnd=3)
+    if colores:
+        dominio = [c for c in colores if c in set(datos[categoria])]
+        barras = base.mark_bar(cornerRadiusEnd=3).encode(
+            color=alt.Color(f"{categoria}:N", legend=None,
+                            scale=alt.Scale(domain=dominio, range=[colores[c] for c in dominio])))
+    else:
+        barras = base.mark_bar(color=color, cornerRadiusEnd=3)
     textos = base.mark_text(color=COLOR_TEXTO, **texto_kw).encode(text="_etiqueta:N")
     capa = barras + textos
     presentes = set(datos[categoria])
@@ -433,7 +279,8 @@ def grafica_tipo(datos: pd.DataFrame, categoria: str, tipo: str, *, medida: str 
         vista = vista[vista[columna] > 0].nlargest(top, columna)
     grafica_barras(vista, categoria, columna, horizontal=horizontal, orden=orden,
                    titulo_valor=f"{NOMBRE_MEDIDA[medida]} {tipo}", color=COLOR_TIPO[tipo],
-                   altura=altura, dominio_max=dominio_max, estrecho=estrecho, marcas=marcas)
+                   altura=altura, dominio_max=dominio_max, estrecho=estrecho, marcas=marcas,
+                   colores=COLOR_NOMBRE_UNIDAD if categoria == "unidad" else None)
 
 
 MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
@@ -502,7 +349,9 @@ def graficas_versus(datos_por_linea: dict[str, pd.DataFrame], por: str, medida: 
 
 
 def selector_medida(clave: str) -> str:
-    medida = st.segmented_control("Medir en", ["creditos", "deliveries"], default="creditos", key=clave,
+    if st.session_state.get(clave) not in ("creditos", "deliveries"):
+        st.session_state[clave] = "creditos"
+    medida = st.segmented_control("Medir en", ["creditos", "deliveries"], key=clave,
                                   format_func=lambda m: NOMBRE_MEDIDA[m],
                                   help="Créditos muestra el costo; Entregas muestra cuántos mensajes recibieron "
                                        "las personas (WhatsApp cobra por mensaje entregado).")
@@ -580,6 +429,75 @@ except FileNotFoundError as error:
 except ValueError as error:
     st.error(str(error))
     st.stop()
+
+
+RUTA_CORREO = CARPETA / "data_correo.xlsx"     # reporte de envíos de correo (Marketing Cloud Intelligence)
+
+
+@st.cache_data(show_spinner="Cargando correo...")
+def cargar_correo(_marca: float):
+    if not RUTA_CORREO.exists():
+        return None, {}
+    return L.leer_reporte_correo(RUTA_CORREO)
+
+
+try:
+    correo_crudo, info_correo = cargar_correo(RUTA_CORREO.stat().st_mtime if RUTA_CORREO.exists() else 0)
+except Exception as error:   # un archivo de correo dañado no debe tumbar el tablero de WhatsApp
+    correo_crudo, info_correo = None, {"error": str(error)}
+correo = L.preparar_correo(correo_crudo, config) if correo_crudo is not None else None
+_g_correo = (correo["fecha"].max() if info_correo.get("con_fecha") and correo is not None
+             else info_correo.get("generado"))
+corte_correo_txt = f"{pd.Timestamp(_g_correo):%d/%m/%Y}" if _g_correo is not None and pd.notna(_g_correo) else ""
+
+
+# ---------------------------------------------------------------------------
+# Acceso: quién está viendo y qué unidades puede ver
+# ---------------------------------------------------------------------------
+
+marca = {"institucion": "Pontificia Universidad Javeriana", "area": "DTI · Equipo CRM",
+         "producto": "Créditos de WhatsApp"}
+marca.update(config.get("marca", {}))
+
+
+def responsables_unidades() -> dict:
+    try:
+        datos = json.loads((CARPETA / "alertas.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return (datos.get("unidades", {}) or {}).get("responsables", {}) or {}
+
+
+_logo_acceso = imagen_html(RUTA_LOGO, marca["institucion"]) if RUTA_LOGO else ""
+CTX = S.puerta({u: L.NOMBRE_UNIDAD[u] for u in L.UNIDADES}, responsables_unidades(), marca, _logo_acceso)
+QUIEN = CTX["correo"]
+
+# Tema de esta persona (o el que está probando en Personalizar): colores de todo el tablero
+TEMA = P.tema_actual(CTX)
+CTX["tema"] = TEMA
+st.markdown(T.css(TEMA), unsafe_allow_html=True)
+_css_vista = P.css_vista(CTX)
+if _css_vista:
+    st.markdown(_css_vista, unsafe_allow_html=True)
+SEMAFORO = T.semaforo(TEMA)
+COLOR_SERIE = COLOR_MARKETING = TEMA["marketing"]
+COLOR_UTILITY = TEMA["utility"]
+COLOR_TEXTO, COLOR_TEXTO_SEC, COLOR_GRILLA = TEMA["texto"], TEMA["texto_sec"], TEMA["grilla"]
+COLOR_TARIFA = TEMA["semaforo"]["amarillo"][1]
+COLOR_UNIDAD = P.colores_unidades(CTX, list(L.UNIDADES), TEMA)      # clave -> color (preferencia de cada persona)
+COLOR_TIPO = {"Marketing": COLOR_MARKETING, "Utility": COLOR_UTILITY}
+COLOR_NOMBRE_UNIDAD = {L.NOMBRE_UNIDAD[u]: c for u, c in COLOR_UNIDAD.items()}
+
+
+def subir_y_registrar(evento: str, detalle: str, *rutas: Path) -> None:
+    """Después de guardar un archivo de configuración: lo anota en la bitácora y, en el enlace publicado,
+    lo sube a GitHub (si no, se perdería al reiniciarse la app)."""
+    A.registrar(evento, QUIEN, detalle)
+    for ruta in rutas:
+        try:
+            almacen.subir_archivo(ruta, f"{evento} ({QUIEN})")
+        except almacen.ErrorAlmacen as error:
+            st.session_state["aviso_subida"] = f"Se guardó, pero no se pudo subir {ruta.name} a GitHub: {error}"
 
 
 # ---------------------------------------------------------------------------
@@ -803,22 +721,18 @@ hay_cambios = (not unidades_vigentes[LINEAS_COMPRA].round(0).equals(unidades_gua
 # Barra lateral: qué ver
 # ---------------------------------------------------------------------------
 
-VISTAS = ["crm"] + list(L.UNIDADES)
+VISTAS = (["crm"] if CTX["admin"] else []) + [u for u in L.UNIDADES if u in CTX["unidades"]]
 NOMBRE_VISTA = {"crm": "Equipo CRM (todo)", **NOMBRE_UNIDAD_APP}
 VISTAS_LINEA = ["Ambas líneas", "UCP vs Outbound", "UCP", "Outbound"]
 ETIQUETA_LINEA = {"Ambas líneas": "Ambas líneas (total)", "UCP vs Outbound": "UCP vs Outbound (comparar)",
                   "UCP": f"UCP ({L.LINEAS['UCP']})", "Outbound": f"Outbound ({L.LINEAS['Outbound']})"}
 
-# La vista se puede abrir directo desde un enlace: ...?unidad=mercadeo
+# La vista se puede abrir directo desde un enlace: ...?unidad=mercadeo (solo si esa persona puede verla)
 if st.session_state.get("vista") not in (None, *VISTAS):
-    st.session_state["vista"] = "crm"
+    st.session_state["vista"] = VISTAS[0]
 if "vista" not in st.session_state:
-    pedida = str(st.query_params.get("unidad", "")).lower().strip()
-    st.session_state["vista"] = pedida if pedida in VISTAS else "crm"
-
-marca = {"institucion": "Pontificia Universidad Javeriana", "area": "DTI · Equipo CRM",
-         "producto": "Créditos de WhatsApp"}
-marca.update(config.get("marca", {}))
+    pedida = str(st.query_params.get("unidad", "")).lower().strip() or P.inicio(CTX)["unidad"]
+    st.session_state["vista"] = pedida if pedida in VISTAS else VISTAS[0]
 
 def titulo_lado(icono: str, titulo: str, subtitulo: str = "") -> None:
     """Encabezado de una sección de la barra lateral (ícono de Material Symbols + título)."""
@@ -840,9 +754,10 @@ with st.sidebar:
         unsafe_allow_html=True)
 
     with st.container(key="lado-vista"):
-        titulo_lado("visibility", "Vista", "Todo el Equipo CRM o una sola unidad")
+        titulo_lado("visibility", "Vista", "Todo el Equipo CRM o una sola unidad" if CTX["admin"] else
+                    ("Tus unidades" if len(VISTAS) > 1 else "Tu unidad"))
         vista = st.selectbox("Vista", VISTAS, key="vista", format_func=lambda v: NOMBRE_VISTA[v],
-                             label_visibility="collapsed")
+                             label_visibility="collapsed", disabled=len(VISTAS) == 1)
     unidad_sel = None if vista == "crm" else vista
     if unidad_sel:
         st.query_params["unidad"] = unidad_sel
@@ -897,13 +812,20 @@ with st.sidebar:
             f'<div class="dato-fila"><span>Antigüedad</span><b>{texto_atraso}</b></div>'
             f'<div class="dato-fila"><span>Desde</span><b>{fecha_min:%d/%m/%Y}</b></div>'
             f'<div class="dato-fila"><span>Reporte</span><b>{generado_txt}</b></div>'
-            f'<div class="dato-fila"><span>Tarifas</span><b>{texto_tarifas}</b></div>',
+            f'<div class="dato-fila"><span>Tarifas</span><b>{texto_tarifas}</b></div>'
+            + (f'<div class="dato-fila"><span>Correo</span><b>datos al {corte_correo_txt}</b></div>'
+               if corte_correo_txt else
+               ('<div class="dato-fila"><span>Correo</span><b>sin reporte</b></div>' if correo is None else "")),
             unsafe_allow_html=True)
         if st.button("Recargar datos", width="stretch", icon=":material/refresh:",
                      help="Vuelve a leer data.xlsx, las tarifas y config.json. Úsalo después de reemplazar el reporte."):
             st.cache_data.clear()
             st.rerun()
 
+    with st.expander("Enlaces útiles", icon=":material/link:"):
+        st.markdown("\n".join(f"- [{e['titulo']}]({e['url']})" + (f"  \n  <span class='lado-nota'>{e['descripcion']}</span>"
+                                                                    if e.get("descripcion") else "")
+                               for e in L.enlaces(config)), unsafe_allow_html=True)
     with st.expander("Cómo leer este tablero", icon=":material/help:"):
         st.markdown(
             "- **Crédito:** unidad con la que se cobran los mensajes. Cada mensaje consume créditos según el "
@@ -925,6 +847,30 @@ with st.sidebar:
             "últimos 28 días, con las tarifas que rijan cada día.")
 
 
+S.menu_perfil(CTX)
+P.avisos(CTX)
+G.mostrar(CTX, hay_otro_dialogo=bool(st.session_state.get("p_pendiente")))
+st.markdown(N.CSS, unsafe_allow_html=True)
+if CTX["admin"] and not CTX["pruebas"]:
+    _vence = almacen.vencimiento_token()
+    if _vence is not None and (_vence - pd.Timestamp.now()).days <= 15:
+        st.warning(f"El token de GitHub vence el {_vence:%d/%m/%Y}. Pídele al dueño del repositorio uno nuevo y "
+                   "cámbialo en los Secrets; si vence, no se podrán guardar usuarios ni cambios.",
+                   icon=":material/key_off:")
+if "aviso_subida" in st.session_state:
+    st.warning(st.session_state.pop("aviso_subida"), icon=":material/cloud_off:")
+if CTX["pruebas"]:
+    st.markdown('<div class="modo-pruebas modo-pruebas-ancho">MODO PRUEBAS · No es el tablero publicado: aquí no '
+                'se pide iniciar sesión, tienes permisos del Equipo CRM y los cambios se guardan solo en esta '
+                'carpeta.</div>', unsafe_allow_html=True)
+# Mientras se ve Mi cuenta, Personalizar, Usuarios o Bitácora, los selectores del tablero no se dibujan y
+# Streamlit olvidaría su valor: se vuelven a asignar para que al volver el tablero siga como estaba.
+for _clave in [k for k in st.session_state.keys() if k in ("canal", "linea") or str(k).startswith(("medida_", "modo_proy_"))]:
+    st.session_state[_clave] = st.session_state[_clave]
+if S.pagina_actual(CTX, {u: L.NOMBRE_UNIDAD[u] for u in L.UNIDADES}, responsables_unidades()):
+    st.stop()
+
+
 # ---------------------------------------------------------------------------
 # Canal (arriba) y línea de WhatsApp
 # ---------------------------------------------------------------------------
@@ -933,15 +879,16 @@ CANALES = list(L.CANALES)                      # whatsapp, correo, sms
 OPCIONES_CANAL = ["todos"] + CANALES
 NOMBRE_CANAL = {"todos": "Todos los canales", **L.CANALES}
 COLOR_CANAL = {"whatsapp": "#128C7E", "correo": "#7B4FBF", "sms": "#5B6B7F"}
-CANALES_CONECTADOS = {"whatsapp"}              # correo y SMS: falta su reporte y sus tarifas
+CANALES_CONECTADOS = {"whatsapp"} | ({"correo"} if correo is not None else set())   # SMS: falta su reporte
 
 if st.session_state.get("canal") not in OPCIONES_CANAL:
-    pedido = str(st.query_params.get("canal", "")).lower().strip()
+    pedido = str(st.query_params.get("canal", "")).lower().strip() or P.inicio(CTX)["canal"]
     st.session_state["canal"] = pedido if pedido in OPCIONES_CANAL else "whatsapp"
 if st.session_state.get("linea_guardada") not in VISTAS_LINEA:
     st.session_state["linea_guardada"] = "Ambas líneas"
 
 zona_titulo = st.container()
+zona_novedades = st.container()
 zona_canal = st.container(key="zona-canal")
 ICONO_CANAL = {"todos": ":material/dashboard:", "whatsapp": ":material/forum:", "correo": ":material/mail:",
                "sms": ":material/sms:"}
@@ -1013,11 +960,18 @@ with zona_titulo:
         f'<div><div class="titulo-texto">Créditos de mensajería'
         f'{" · " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else ""}</div>'
         f'<div class="subtitulo">'
-        f'<span class="{clase_frescura}">Datos de WhatsApp al {fecha_max:%d/%m/%Y} · {frescura}</span>'
-        f'<span class="pastilla">{"Unidad " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else "Equipo CRM"}</span>'
-        f'<span class="pastilla">Periodo: {inicio:%d/%m/%Y} – {fin:%d/%m/%Y}</span>'
-        f'</div></div></div>', unsafe_allow_html=True)
-    if dias_desde > 7:
+        + (f'<span class="{clase_frescura}">Datos de WhatsApp al {fecha_max:%d/%m/%Y} · {frescura}</span>'
+           if canal != "correo" else "")
+        + (f'<span class="frescura">Datos de correo al {corte_correo_txt}</span>'
+           if canal in ("correo", "todos") and corte_correo_txt else "")
+        + f'<span class="pastilla">{"Unidad " + NOMBRE_UNIDAD_APP[unidad_sel] if unidad_sel else "Equipo CRM"}</span>'
+        + (f'<span class="pastilla">Periodo: {inicio:%d/%m/%Y} – {fin:%d/%m/%Y}</span>'
+           if canal != "correo" or info_correo.get("con_fecha") else '<span class="pastilla">Correo: acumulado</span>')
+        + '</div></div></div>', unsafe_allow_html=True)
+    st.button("Descargar PDF", icon=":material/picture_as_pdf:", key="boton_pdf", type="tertiary",
+              help="Abre la ventana de impresión con lo que estás viendo; elige «Guardar como PDF».",
+              on_click=lambda: st.session_state.update(imprimir=True))
+    if dias_desde > 7 and canal != "correo":
         st.warning(f"El reporte llega hasta el {fecha_max:%d/%m/%Y} ({frescura}). El consumo real puede ser mayor: "
                    "exporta un reporte nuevo de Marketing Cloud y reemplaza data.xlsx.", icon=":material/schedule:")
     if hay_cambios:
@@ -1029,10 +983,13 @@ if canal == "whatsapp":
                     ["Resumen", "Proyección", "Unidades", "Journeys", "Detalle", "Créditos"])
 elif canal == "todos":
     nombres_tabs = ["Resumen"] if unidad_sel else ["Resumen", "Configuración"]
+elif canal == "correo" and "correo" in CANALES_CONECTADOS:
+    nombres_tabs = ["Resumen", "Journeys"] if unidad_sel else ["Resumen", "Remitentes", "Journeys", "Créditos"]
 else:
     nombres_tabs = []
 tabs = dict(zip(nombres_tabs, st.tabs(nombres_tabs))) if nombres_tabs else {}
 tabs_todos = tabs if canal == "todos" else {}
+tabs_correo = tabs if canal == "correo" else {}
 if canal != "whatsapp":
     tabs = {}   # las secciones de WhatsApp no se dibujan
 
@@ -1150,7 +1107,6 @@ def primera_en_agotarse(por_linea: dict[str, dict]) -> tuple | None:
         return None
     _, agot, nombre_l, ritmo = min(candidatas, key=lambda c: c[0])
     return agot, nombre_l, ritmo
-    return info
 
 
 def etiqueta_corte() -> str:
@@ -1161,10 +1117,11 @@ def etiqueta_corte() -> str:
 
 
 def detalle_agotamiento(e: dict) -> str:
-    """En el total de ambas líneas: qué línea se agota primero (son bolsas separadas)."""
+    """En el total de ambas líneas: qué línea se agota primero (son bolsas separadas). En las demás tarjetas
+    deja el mismo espacio vacío para que las filas de todas las tarjetas queden a la misma altura."""
     if not isinstance(e["agot_ts"], pd.Timestamp) or not e["agot_linea"]:
-        return ""
-    return f'<div class="cifra-sub">Primero se agota {e["agot_linea"]}</div>'
+        return '<div class="cifra-sub cifra-reserva">&nbsp;</div>'
+    return f'<div class="cifra-sub cifra-reserva">Primero se agota {e["agot_linea"]}</div>'
 
 
 def cifras_basicas(e: dict) -> list[tuple]:
@@ -1206,11 +1163,33 @@ def texto_variacion(e: dict) -> str:
     return f"Últimos 7 días: {cambio:+.0f} % frente a los 7 días anteriores."
 
 
+def tarjeta_html(e: dict, detalle: bool = False) -> str:
+    cifras = cifras_detalle(e) if detalle else cifras_basicas(e) + cifras_tipo(e)
+    return tarjeta_semaforo(e["titulo"], e["estado"], e["uso"], cifras, amarillo_pct, rojo_pct, etiqueta_corte())
+
+
 def tarjeta(e: dict, detalle: bool = False) -> None:
     clase = "semaforo semaforo-detalle" if detalle else "semaforo"
-    cifras = cifras_detalle(e) if detalle else cifras_basicas(e) + cifras_tipo(e)
-    st.markdown(f'<div class="{clase}">{tarjeta_semaforo(e["titulo"], e["estado"], e["uso"], cifras, amarillo_pct, rojo_pct, etiqueta_corte())}'
-                f'</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="{clase}">{tarjeta_html(e, detalle)}</div>', unsafe_allow_html=True)
+
+
+def fila_tarjetas(clave: str, htmls: list[str], botones: list[dict | None] | None = None, *,
+                  detalle: bool = False) -> None:
+    """Fila de tarjetas, cada una con su botón debajo (opcional).
+
+    Todas quedan a la misma altura y los botones alineados. Se acomoda sola al ancho disponible (zoom del
+    navegador, pantallas pequeñas, celular): 4 tarjetas pasan a 2 por fila y luego a 1; 3 y 2 pasan a 1.
+    Ver las reglas .st-key-fila-* en los estilos."""
+    n = max(1, min(len(htmls), 4))
+    botones = botones or [None] * len(htmls)
+    clase = "semaforo semaforo-detalle" if detalle else "semaforo"
+    with st.container(key=f"fila-{n}-{clave}"):
+        cols = st.columns(n, gap="medium")
+        for i, (html, boton) in enumerate(zip(htmls, botones)):
+            with cols[i % n]:
+                st.markdown(f'<div class="{clase}">{html}</div>', unsafe_allow_html=True)
+                if boton:
+                    st.button(**boton, width="stretch")
 
 
 def fila_medidor(nombre: str, e: dict) -> str:
@@ -1243,21 +1222,17 @@ def bloque_estado() -> None:
         unsafe_allow_html=True)
 
     if vista_linea == "Ambas líneas":
-        cols = st.columns(3)
-        for col, (nombre_l, e) in zip(cols, estados.items()):
-            with col:
-                tarjeta(e)
-                if L.LINEAS[nombre_l] is not None:
-                    st.button(f"Ver detalle de {nombre_l}", key=f"ir_{nombre_l}", on_click=ir_a_linea,
-                              args=(nombre_l,), icon=":material/arrow_forward:", width="stretch")
-                else:
-                    st.button("Comparar UCP vs Outbound", key="ir_versus", on_click=ir_a_linea,
-                              args=("UCP vs Outbound",), icon=":material/compare_arrows:", width="stretch")
+        fila_tarjetas("lineas", [tarjeta_html(e) for e in estados.values()], [
+            dict(label="Ver detalle de " + n, key=f"ir_{n}", on_click=ir_a_linea, args=(n,), icon=":material/arrow_forward:")
+            if L.LINEAS[n] is not None else
+            dict(label="Comparar UCP vs Outbound", key="ir_versus", on_click=ir_a_linea, args=("UCP vs Outbound",),
+                 icon=":material/compare_arrows:")
+            for n in estados])
     elif versus:
-        cols = st.columns(2)
+        fila_tarjetas("versus", [tarjeta_html(estados[n], detalle=True) for n in LINEAS_COMPRA], detalle=True)
+        cols = st.columns(2, gap="medium")
         for col, nombre_l in zip(cols, LINEAS_COMPRA):
             with col:
-                tarjeta(estados[nombre_l], detalle=True)
                 st.caption(texto_variacion(estados[nombre_l]))
                 if not unidad_sel:
                     filas = [fila_medidor(NOMBRE_UNIDAD_APP[u], estado_de(nombre_l, u)) for u in L.UNIDADES]
@@ -1313,40 +1288,6 @@ def sin_datos_periodo() -> None:
             "Elige otro periodo en la barra lateral.", icon=":material/event_busy:")
 
 
-def bloque_efecto_tarifa(datos: pd.DataFrame) -> None:
-    """Separa, para cada cambio de tarifa del periodo, cuánto del consumo se debe a la tarifa y no al volumen."""
-    efectos = L.efecto_tarifas(datos, tarifas, inicio, fin_real)
-    if not efectos:
-        return
-    st.markdown("#### Efecto de los cambios de tarifa")
-    nota("Cuando cambia la tarifa, las mismas entregas pueden costar más o menos créditos. Aquí se compara lo "
-         "que se cobró desde cada cambio con lo que habrían costado esas mismas entregas con la tabla anterior. "
-         "En las gráficas de semana y mes, la línea punteada marca el cambio.")
-    for ef in efectos:
-        dif = ef["efecto"]
-        usd = usd_de(datos[(datos["fecha"] >= ef["desde"]) & (datos["fecha"] <= ef["hasta"])])
-        usd_ef = None if usd is None or ef["creditos"] == 0 else usd * dif / ef["creditos"]
-        pct_ef = dif / ef["con_tabla_anterior"] * 100 if ef["con_tabla_anterior"] else 0
-        sentido = "sumó" if dif > 0.5 else ("restó" if dif < -0.5 else "no cambió")
-        with st.container(border=True):
-            st.markdown(f'<div class="subtitulo-bloque">Tabla del {ef["desde"]:%d/%m/%Y}</div>', unsafe_allow_html=True)
-            k1, k2, k3 = st.columns(3)
-            k1.metric(f"Cobrado del {ef['desde']:%d/%m} al {ef['hasta']:%d/%m}", num(ef["creditos"]),
-                      help=f"{num(ef['entregas'])} entregas en ese tramo.")
-            k2.metric(f"Con la tabla anterior ({ef['tabla_anterior']:%d/%m/%Y})", num(ef["con_tabla_anterior"]))
-            k3.metric("Efecto de la tarifa", ("+" if dif > 0 else "") + num(dif) if abs(dif) >= 0.5 else "0",
-                      delta=(f"{pct_ef:+.1f} %".replace(".", ",") if abs(dif) >= 0.5 else None), delta_color="inverse",
-                      help="Créditos de más (o de menos) solo por el cambio de tarifa, con las mismas entregas.")
-            if abs(dif) >= 0.5:
-                texto_ef = f"El cambio de tarifa {sentido} {num(abs(dif))} créditos"
-                if usd_ef is not None:
-                    texto_ef += f" (≈ {txt_usd(abs(usd_ef))}{ESTIMADO_USD})"
-            else:
-                texto_ef = "El cambio de tarifa no cambió lo cobrado por estas entregas"
-            st.caption(texto_ef + ". El resto de la variación del consumo se debe a cuántas entregas hubo, "
-                       "no a la tarifa.")
-
-
 def cifras_periodo(datos: pd.DataFrame, clave: str, *, apilado: bool = False) -> None:
     t = L.totales(datos)
     if apilado:
@@ -1370,50 +1311,84 @@ def cifras_periodo(datos: pd.DataFrame, clave: str, *, apilado: bool = False) ->
 # Resumen
 # ---------------------------------------------------------------------------
 
+def punto_unidad(u: str) -> str:
+    return f'<span class="punto-unidad" style="background:{COLOR_UNIDAD.get(u, "#8A919C")}"></span>'
+
+
+def seccion_periodo(por_linea: dict) -> None:
+    st.markdown(f"### Consumo del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}")
+    nota(f"Lo que usó {texto_ambito} en el periodo consultado ({dias_periodo} "
+         f"{'día' if dias_periodo == 1 else 'días'} con datos). Para cambiarlo, usa «Periodo a consultar» en la barra lateral.")
+    if futuro:
+        st.info(f"El periodo llega hasta el {fin:%d/%m/%Y}, pero los datos reales van hasta el {fin_datos:%d/%m/%Y}. "
+                "Las cifras y gráficas del Resumen muestran solo lo real; lo estimado para después de esa "
+                "fecha está en las tarjetas de estado y en la pestaña Proyección.", icon=":material/update:")
+    if versus:
+        cols = st.columns(2)
+        for col, nombre_l in zip(cols, LINEAS_COMPRA):
+            with col:
+                st.markdown(f'<div class="subtitulo-bloque">Línea {nombre_l}</div>', unsafe_allow_html=True)
+                cifras_periodo(por_linea[nombre_l], f"res-{nombre_l}", apilado=True)
+    else:
+        cifras_periodo(periodo, "resumen")
+    nota("Utility tiene tarifas mucho más bajas que Marketing (en Colombia, 0,99 frente a 15,44 créditos por "
+         "mensaje): pesa poco en créditos aunque tenga entregas. Por eso cada tipo tiene su propia gráfica.")
+
+
+def seccion_gasto_unidad() -> None:
+    """Gasto en dólares de cada unidad en el periodo, con el color de cada unidad."""
+    st.markdown("### Gasto por unidad (USD)")
+    filas = []
+    for u in L.UNIDADES:
+        datos_u = periodo[periodo["unidad"] == u]
+        filas.append({"unidad": NOMBRE_UNIDAD_APP[u], "usd": usd_de(datos_u) or 0.0,
+                      "creditos": float(datos_u["creditos"].sum())})
+    tabla_u = pd.DataFrame(filas)
+    total = float(tabla_u["usd"].sum())
+    if total <= 0:
+        st.info("Sin gasto en el periodo, o falta el precio por 1.000 créditos (Todos los canales → Configuración).",
+                icon=":material/info:")
+        return
+    nota(f"Créditos usados en el periodo por el precio de cada línea{ESTIMADO_USD}. Total: {txt_usd(total)}.")
+    tabla_u["participacion"] = tabla_u["usd"] / total * 100
+    grafica_barras(tabla_u, "unidad", "usd", horizontal=True, titulo_valor="USD", colores=COLOR_NOMBRE_UNIDAD,
+                   formato=lambda v: f"{txt_usd(v)} · " + pct(float(v) / total, 0))
+
+
 if "Resumen" in tabs:
     with tabs["Resumen"]:
-        bloque_estado()
-
-        st.markdown(f"### Consumo del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}")
-        nota(f"Lo que usó {texto_ambito} en el periodo consultado ({dias_periodo} "
-             f"{'día' if dias_periodo == 1 else 'días'} con datos). Para cambiarlo, usa «Periodo a consultar» en la barra lateral.")
-        if futuro:
-            st.info(f"El periodo llega hasta el {fin:%d/%m/%Y}, pero los datos reales van hasta el {fin_datos:%d/%m/%Y}. "
-                    "Las cifras y gráficas de esta sección muestran solo lo real; lo estimado para después de esa "
-                    "fecha está en las tarjetas de estado y en la pestaña Proyección.", icon=":material/update:")
-        if periodo.empty:
-            sin_datos_periodo()
-        else:
-            por_linea = {n: filtrar(periodo, n) for n in LINEAS_COMPRA}
-            if versus:
-                cols = st.columns(2)
-                for col, nombre_l in zip(cols, LINEAS_COMPRA):
-                    with col:
-                        st.markdown(f'<div class="subtitulo-bloque">Línea {nombre_l}</div>', unsafe_allow_html=True)
-                        cifras_periodo(por_linea[nombre_l], f"res-{nombre_l}", apilado=True)
+        visibles = P.secciones_visibles(CTX, equipo=unidad_sel is None)
+        por_linea = {n: filtrar(periodo, n) for n in LINEAS_COMPRA}
+        medida = None
+        aviso_vacio = False
+        for sec in visibles:
+            if sec == "estado":
+                bloque_estado()
+                continue
+            if periodo.empty:
+                if not aviso_vacio:
+                    sin_datos_periodo()
+                    aviso_vacio = True
+                continue
+            if sec == "periodo":
+                seccion_periodo(por_linea)
+            elif sec == "gasto_unidad":
+                seccion_gasto_unidad()
             else:
-                cifras_periodo(periodo, "resumen")
-            nota("Utility tiene tarifas mucho más bajas que Marketing (en Colombia, 0,99 frente a 15,44 créditos por "
-                 "mensaje): pesa poco en créditos aunque tenga entregas. Por eso cada tipo tiene su propia gráfica.")
-            bloque_efecto_tarifa(periodo)
-
-            st.markdown("### Consumo en el tiempo")
-            medida = selector_medida("medida_resumen")
-            secciones = [("Por semana", "semana", False, None), ("Por mes", "mes", False, None),
-                         ("Países con mayor consumo", "nombre_pais", True, 10)]
-            if not unidad_sel:
-                secciones.append(("Consumo por unidad", "unidad", True, None))
-            for titulo_s, por, horizontal, top in secciones:
-                if titulo_s.startswith("Países"):
-                    st.markdown(f"### {titulo_s}")
-                elif titulo_s.startswith("Consumo por unidad"):
-                    st.markdown(f"### {titulo_s}")
-                else:
-                    st.markdown(f"#### {titulo_s}")
+                titulo_s, por, horizontal, top = {
+                    "semana": ("Consumo por semana", "semana", False, None),
+                    "mes": ("Consumo por mes", "mes", False, None),
+                    "paises": ("Países con mayor consumo", "nombre_pais", True, 10),
+                    "unidades": ("Consumo por unidad", "unidad", True, None)}[sec]
+                st.markdown(f"### {titulo_s}")
+                if medida is None:   # un solo selector, en la primera gráfica
+                    medida = selector_medida("medida_resumen")
                 if versus:
                     graficas_versus(por_linea, por, medida, horizontal=horizontal, top=top)
                 else:
                     graficas_por_tipo(periodo, por, medida, horizontal=horizontal, top=top)
+        st.caption("Puedes cambiar el orden de estas secciones, ocultarlas y elegir los colores de las unidades "
+                   "en el menú de tu perfil → Personalizar tablero.")
 
 
 # ---------------------------------------------------------------------------
@@ -1426,20 +1401,21 @@ if "Unidades" in tabs:
         nota(f"Créditos asignados a cada unidad en {'ambas líneas' if versus else texto_linea}, frente a todo lo "
              "que ha usado. Con «Ver la vista de...» el tablero completo muestra solo esa unidad, igual que la "
              "verá su responsable.")
-        cols = st.columns(3)
-        filas_t = []
-        for col, u in zip(cols, L.UNIDADES):
+        filas_t, htmls_u = [], []
+        for u in L.UNIDADES:
             e = estado_de(linea, u)
-            e["titulo"] = NOMBRE_UNIDAD_APP[u]
-            with col:
-                tarjeta(e)
-                st.button(f"Ver la vista de {NOMBRE_UNIDAD_APP[u]}", key=f"vista_{u}", on_click=ir_a_vista,
-                          args=(u,), icon=":material/arrow_forward:", width="stretch")
+            e["titulo"] = punto_unidad(u) + NOMBRE_UNIDAD_APP[u]
+            htmls_u.append(tarjeta_html(e))
             tp = L.totales(e["periodo"])
             filas_t.append({"Unidad": NOMBRE_UNIDAD_APP[u], "asignados": e["disponible"], "usados": e["consumido"],
                             "uso": e["uso"] if e["uso"] is not None else float("nan"),
                             "periodo": tp["creditos"], "mkt": tp["creditos_marketing"], "uti": tp["creditos_utility"],
                             "entregas": tp["deliveries"]})
+        por_fila = 4 if len(htmls_u) % 4 == 0 else 3
+        for i in range(0, len(htmls_u), por_fila):   # cada tarjeta con su botón debajo
+            fila_tarjetas(f"unidades-{i}", htmls_u[i:i + por_fila],
+                          [dict(label=f"Ver la vista de {NOMBRE_UNIDAD_APP[u]}", key=f"vista_{u}", on_click=ir_a_vista,
+                                args=(u,), icon=":material/arrow_forward:") for u in L.UNIDADES[i:i + por_fila]])
         st.markdown("### Comparativo de unidades")
         nota(f"Usados en el periodo: del {inicio:%d/%m/%Y} al {fin:%d/%m/%Y}.")
         tabla(pd.DataFrame(filas_t),
@@ -1737,8 +1713,10 @@ if "Proyección" in tabs:
         nota(f"Qué pasaría con los créditos de {texto_ambito} si se sigue al mismo ritmo, desde el último día con "
              f"datos ({fin_datos:%d/%m/%Y}).")
         clave_p = f"{unidad_sel or 'crm'}"
+        if st.session_state.get(f"modo_proy_{clave_p}") not in ("ritmo", "journeys"):
+            st.session_state[f"modo_proy_{clave_p}"] = "ritmo"
         modo_proy = st.segmented_control(
-            "Cómo proyectar", ["ritmo", "journeys"], key=f"modo_proy_{clave_p}", default="ritmo",
+            "Cómo proyectar", ["ritmo", "journeys"], key=f"modo_proy_{clave_p}",
             format_func=lambda m: {"ritmo": "Con el ritmo actual", "journeys": "Eligiendo journeys"}[m],
             help="«Con el ritmo actual» usa todo lo que se envió en el periodo de referencia. «Eligiendo journeys» "
                  "deja quitar los journeys que ya no se van a usar y agregar journeys nuevos o de reemplazo.") or "ritmo"
@@ -1920,6 +1898,11 @@ def seccion_unidades_y_journeys() -> None:
         cfg_a.setdefault("unidades", {})["responsables"] = {u["clave"]: u["responsables"] for u in nuevas}
         RUTA_ALERTAS.write_text(json.dumps(cfg_a, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         quitadas = [previas[c]["nombre"] for c in previas if c not in claves]
+        agregadas = [u["nombre"] for u in nuevas if u["clave"] not in previas]
+        subir_y_registrar("Guarda unidades y journeys", "; ".join(x for x in (
+            f"{len(nuevas)} unidades", f"agrega {', '.join(agregadas)}" if agregadas else "",
+            f"quita {', '.join(quitadas)}" if quitadas else "",
+            f"{len(asignados)} journeys asignados a mano") if x), RUTA_CONFIG, RUTA_ALERTAS)
         for k in ("editor_lista_unidades", "editor_unidades"):
             st.session_state.pop(k, None)
         st.cache_data.clear()
@@ -1959,7 +1942,8 @@ if "Créditos" in tabs:
         valor_l = {l: usd_creditos(presupuestos[l]["creditos_totales"], l) for l in LINEAS_COMPRA}
         partes_v = [f"{l}: {txt_usd(valor_l[l])} (a US$ {txt_precio(PRECIO_LINEA[l])} por 1.000)"
                     if PRECIO_LINEA[l] is not None else f"{l}: sin precio" for l in LINEAS_COMPRA]
-        st.caption("Valor de lo adquirido" + ESTIMADO_USD + ": " + " · ".join(partes_v) + ". El precio general de "
+        st.caption(("Valor de lo adquirido" + ESTIMADO_USD + ": " + " · ".join(partes_v)).replace("$", "\\$")
+                   + ". El precio general de "
                    "WhatsApp se cambia en Todos los canales → Configuración; si una compra tuvo otro precio, "
                    "escríbelo en su fila.")
         if len(compras_sin_linea):
@@ -1992,7 +1976,7 @@ if "Créditos" in tabs:
             if fila["Concepto"] == "Sin asignar a unidades":
                 negativo = any(fila[c] < 0 for c in LINEAS_COMPRA)
                 pendiente = any(round(fila[c]) != 0 for c in LINEAS_COMPRA)
-                fondo = "#FDECEA" if negativo else ("#FFF6DB" if pendiente else "#E8F5EC")
+                fondo = SEMAFORO["rojo" if negativo else ("amarillo" if pendiente else "verde")]["fondo"]
                 return [f"background-color: {fondo}; font-weight: 600"] * len(fila)
             return [""] * len(fila)
 
@@ -2016,8 +2000,13 @@ if "Créditos" in tabs:
                                   "linea": r["Línea"] or "", "creditos": r["Créditos"], "nota": r["Nota"],
                                   "precio_usd_1000": r[COL_PRECIO] if pd.notna(r[COL_PRECIO]) else None}
                                  for _, r in compras_vigentes.iterrows() if r["Créditos"] > 0]
+            antes = {l: L.config_linea(config, l)["creditos_totales"] for l in LINEAS_COMPRA}
             L.guardar_creditos(RUTA_CONFIG, config, {l: presupuestos[l]["unidades"] for l in LINEAS_COMPRA},
                                compras_a_guardar)
+            subir_y_registrar("Guarda créditos", "; ".join(
+                f"{l}: {num(antes[l])} → {num(presupuestos[l]['creditos_totales'])} adquiridos, asignados "
+                + ", ".join(f"{NOMBRE_UNIDAD_APP[u]} {num(v)}" for u, v in presupuestos[l]["unidades"].items())
+                for l in LINEAS_COMPRA), RUTA_CONFIG)
             st.session_state.pop("editor_unidades", None)
             st.session_state.pop("editor_compras", None)
             st.cache_data.clear()
@@ -2063,14 +2052,14 @@ def barra_canales(partes: list[tuple[str, float]], total: float | None, formato)
         f'({v / base * 100:.0f} %)</span>' for c, v in partes)
     if total and total > 0:
         resto = max(total - suma, 0)
-        leyenda += f'<span><i style="background:#E3E7EE;"></i>Disponible <b>{formato(resto)}</b></span>'
+        leyenda += f'<span><i style="background:{TEMA['borde']};"></i>Disponible <b>{formato(resto)}</b></span>'
     return f'<div class="barra-canales">{segmentos}</div><div class="leyenda-canales">{leyenda}</div>'
 
 
 def tarjeta_pendiente(c: str) -> str:
     return (f'<div class="semaforo-item canal-pendiente" style="border-color:{COLOR_CANAL[c]};">'
             f'<div class="semaforo-cabecera"><div class="semaforo-titulo">{NOMBRE_CANAL[c]}</div>'
-            f'<span class="insignia" style="background:#F3F5F9; color:#52514E; border:1px solid #C9CDD3;">Sin conectar'
+            f'<span class="insignia" style="background:{TEMA["superficie2"]}; color:{TEMA["texto_sec"]}; border:1px solid {TEMA["borde_fuerte"]};">Sin conectar'
             f'</span></div><div class="pendiente-texto">Aún no está conectado: falta su reporte de Marketing Cloud '
             f'y su tabla de tarifas. Cuando estén, aparecerá aquí con sus créditos, su gasto y sus entregas.</div></div>')
 
@@ -2081,11 +2070,18 @@ def pagina_todos() -> None:
         st.markdown(f"### Todos los canales · {nombre_ambito}")
         nota("Cada canal tiene su propia bolsa de créditos y sus créditos no valen lo mismo, así que aquí se comparan "
              "en lo que sí se puede sumar: <b>dólares</b> (con el precio por 1.000 créditos de cada canal) y "
-             "<b>entregas</b>. Por ahora solo WhatsApp está conectado.")
+             "<b>mensajes</b>. SMS aún no está conectado."
+             + ("" if correo is None or info_correo.get("con_fecha") else
+                " El reporte de correo no trae fecha de envío: el correo se suma con todo su acumulado."))
 
         al = "a la fecha" if (fin >= fin_datos and not futuro) else f"al {fin:%d/%m/%Y}"
         gasto = {"whatsapp": e_w.get("usd") or 0.0}
         comprado = e_w.get("usd_disponible")
+        e_c = estado_correo(unidad_sel) if correo is not None else None
+        if e_c is not None:
+            gasto["correo"] = e_c.get("usd") or 0.0
+            if e_c.get("usd_disponible"):
+                comprado = (comprado or 0.0) + e_c["usd_disponible"]
         st.markdown(f"#### Gasto en dólares {al}{ESTIMADO_USD}")
         if comprado:
             st.markdown(f'<div class="cifra-grande">{txt_usd(sum(gasto.values()))} <small>de {txt_usd(comprado)} '
@@ -2097,22 +2093,26 @@ def pagina_todos() -> None:
                     "Todos los canales → Configuración.", icon=":material/payments:")
 
         entregas = {"whatsapp": float(periodo["deliveries"].sum())}
-        st.markdown(f"#### Entregas del {inicio:%d/%m/%Y} al {fin_real:%d/%m/%Y}")
-        st.markdown(f'<div class="cifra-grande">{num(sum(entregas.values()))} <small>mensajes entregados</small></div>',
-                    unsafe_allow_html=True)
+        if e_c is not None:
+            entregas["correo"] = float(correo_en_periodo(correo if not unidad_sel else
+                                                         correo[correo["unidad"] == unidad_sel])["envios"].sum())
+        st.markdown(f"#### Mensajes del {inicio:%d/%m/%Y} al {fin_real:%d/%m/%Y}")
+        st.markdown(f'<div class="cifra-grande">{num(sum(entregas.values()))} <small>mensajes (WhatsApp entregados'
+                    f'{", correos enviados" if e_c is not None else ""})</small></div>', unsafe_allow_html=True)
         st.markdown(barra_canales(list(entregas.items()), None, num), unsafe_allow_html=True)
 
         st.markdown("#### Cada canal")
-        cols = st.columns(len(CANALES))
-        for col, c in zip(cols, CANALES):
-            with col:
-                if c in CANALES_CONECTADOS:
-                    e_c = dict(e_w, titulo=NOMBRE_CANAL[c])
-                    tarjeta(e_c)
-                    st.button(f"Ver {NOMBRE_CANAL[c]}", key=f"ir_canal_{c}", on_click=ir_a_canal, args=(c,),
-                              icon=":material/arrow_forward:", width="stretch")
-                else:
-                    st.markdown(f'<div class="semaforo">{tarjeta_pendiente(c)}</div>', unsafe_allow_html=True)
+        htmls_c, botones_c = [], []
+        for c in CANALES:
+            if c == "correo" and e_c is not None:
+                htmls_c.append(tarjeta_correo(dict(e_c, titulo="Correo"), "Adquiridos" if not unidad_sel else "Asignados"))
+            elif c in CANALES_CONECTADOS:
+                htmls_c.append(tarjeta_html(dict(e_w, titulo=NOMBRE_CANAL[c])))
+            else:
+                htmls_c.append(tarjeta_pendiente(c))
+            botones_c.append(dict(label=f"Ver {NOMBRE_CANAL[c]}", key=f"ir_canal_{c}", on_click=ir_a_canal, args=(c,),
+                                  icon=":material/arrow_forward:"))
+        fila_tarjetas("canales", htmls_c, botones_c)
 
         if not periodo.empty:
             semanal = periodo.assign(usd=periodo["creditos"] * periodo["linea"].map(PRECIO_LINEA).astype(float) / 1000)
@@ -2128,20 +2128,42 @@ def pagina_todos() -> None:
                         unsafe_allow_html=True)
             grafica_barras(tabla_e, "semana", "deliveries", orden=orden_e, titulo_valor="Entregas",
                            color=COLOR_CANAL["whatsapp"])
-            st.caption("Cuando se conecten Correo y SMS, cada canal tendrá su gráfica aquí, una debajo de la otra.")
+            if info_correo.get("con_fecha") and correo is not None:
+                c_sem = correo_en_periodo(correo if not unidad_sel else correo[correo["unidad"] == unidad_sel])
+                if not c_sem.empty:
+                    c_sem = c_sem.assign(semana_inicio=c_sem["fecha"] - pd.to_timedelta(c_sem["fecha"].dt.weekday, unit="D"))
+                    t_c = c_sem.groupby("semana_inicio", as_index=False)[["envios", "creditos"]].sum().sort_values("semana_inicio")
+                    t_c["semana"] = t_c["semana_inicio"].apply(etiqueta_semana)
+                    t_c["usd"] = t_c["creditos"].apply(lambda v: usd_correo(v) or 0.0)
+                    st.markdown(f'<div class="titulo-tipo" style="border-color:{COLOR_CANAL["correo"]};">Correo · USD por semana</div>',
+                                unsafe_allow_html=True)
+                    grafica_barras(t_c, "semana", "usd", orden=list(t_c["semana"]), titulo_valor="USD",
+                                   color=COLOR_CANAL["correo"])
+                    st.markdown(f'<div class="titulo-tipo" style="border-color:{COLOR_CANAL["correo"]};">Correo · Correos por semana</div>',
+                                unsafe_allow_html=True)
+                    grafica_barras(t_c, "semana", "envios", orden=list(t_c["semana"]), titulo_valor="Correos",
+                                   color=COLOR_CANAL["correo"])
+            st.caption("Correo no aparece por semana porque su reporte no trae fecha de envío; SMS aún no está conectado."
+                       if not info_correo.get("con_fecha") else "SMS aún no está conectado.")
 
         if not unidad_sel:
             st.markdown("#### Por unidad")
             filas_u = []
             for u in L.UNIDADES:
                 d_u = periodo[periodo["unidad"] == u]
+                c_u = correo_en_periodo(correo[correo["unidad"] == u]) if correo is not None else None
                 filas_u.append({"Unidad": NOMBRE_UNIDAD_APP[u], "w_usd": round(usd_de(d_u) or 0.0),
-                                "w_ent": float(d_u["deliveries"].sum()), "correo": "Sin conectar", "sms": "Sin conectar"})
+                                "w_ent": float(d_u["deliveries"].sum()),
+                                "c_usd": round(usd_correo(float(c_u["creditos"].sum())) or 0.0) if c_u is not None else None,
+                                "c_env": float(c_u["envios"].sum()) if c_u is not None else None,
+                                "sms": "Sin conectar"})
             vista_u = pd.DataFrame(filas_u)
             st.dataframe(vista_u, hide_index=True, width="stretch", column_config={
                 "w_usd": st.column_config.NumberColumn(f"WhatsApp · gasto USD{ESTIMADO_USD}", format="localized"),
                 "w_ent": st.column_config.NumberColumn("WhatsApp · entregas", format="localized"),
-                "correo": st.column_config.TextColumn("Correo"), "sms": st.column_config.TextColumn("SMS")})
+                "c_usd": st.column_config.NumberColumn(f"Correo · gasto USD{ESTIMADO_CORREO}", format="localized"),
+                "c_env": st.column_config.NumberColumn("Correo · correos", format="localized"),
+                "sms": st.column_config.TextColumn("SMS")})
             st.caption(f"Gasto y entregas del periodo consultado ({inicio:%d/%m/%Y} al {fin_real:%d/%m/%Y}).")
 
     if "Configuración" in tabs_todos:
@@ -2156,8 +2178,8 @@ def pagina_todos() -> None:
                 base_p, key="editor_precios", hide_index=True, width="stretch", disabled=["Canal"],
                 column_config={
                     "Canal": st.column_config.TextColumn("Canal"),
-                    "Precio": st.column_config.NumberColumn("USD por 1.000 créditos", min_value=0.0, step=0.01,
-                                                            format="%.2f"),
+                    "Precio": st.column_config.NumberColumn("USD por 1.000 créditos", min_value=0.0, step=0.001,
+                                                            format="%.3f"),
                     "Confirmado": st.column_config.CheckboxColumn(
                         "Confirmado", help="Márcalo cuando el valor venga del contrato o la factura."),
                 })
@@ -2166,28 +2188,158 @@ def pagina_todos() -> None:
                             for c, (_, r) in zip(CANALES, precios_ed.iterrows())}
                 nuevos_ok = {c: bool(r["Confirmado"]) for c, (_, r) in zip(CANALES, precios_ed.iterrows())}
                 L.guardar_precios(RUTA_CONFIG, config, nuevos_p, nuevos_ok)
+                subir_y_registrar("Guarda precios", "; ".join(
+                    f"{NOMBRE_CANAL[c]}: {txt_precio(nuevos_p[c])}{' (confirmado)' if nuevos_ok[c] else ''}"
+                    for c in CANALES), RUTA_CONFIG)
                 st.session_state.pop("editor_precios", None)
                 st.cache_data.clear()
                 st.toast("Precios guardados en config.json", icon=":material/check:")
                 st.rerun()
             st.caption("En WhatsApp, si una compra se pagó a otro precio, se escribe en su fila en WhatsApp → Créditos.")
             seccion_unidades_y_journeys()
+            seccion_enlaces()
+            seccion_estado_sistema()
+
+
+# ---------------------------------------------------------------------------
+# Correo (en canal_correo.py)
+# ---------------------------------------------------------------------------
+
+import canal_correo as CC  # noqa: E402
+
+_correo = CC.preparar(globals())
+estado_correo, tarjeta_correo, usd_correo = _correo.estado_correo, _correo.tarjeta_correo, _correo.usd_correo
+correo_en_periodo, pagina_correo = _correo.correo_en_periodo, _correo.pagina_correo
+inicio_correo, fin_correo, fecha_max_correo = _correo.inicio, _correo.fin, _correo.fecha_max
+ESTIMADO_CORREO = _correo.ESTIMADO_CORREO
+
+
+def seccion_enlaces() -> None:
+    st.markdown("### Enlaces útiles")
+    nota("Accesos rápidos que todos ven en la barra lateral (por ejemplo, las tablas de tarifas de Salesforce). "
+         "Agrega una fila al final o borra las que sobren.")
+    base_e = pd.DataFrame(L.enlaces(config) or [{"titulo": "", "url": "", "descripcion": ""}])
+    editados = st.data_editor(base_e, key="editor_enlaces", num_rows="dynamic", hide_index=True, width="stretch",
+                              column_config={"titulo": st.column_config.TextColumn("Título", width="medium"),
+                                             "url": st.column_config.LinkColumn("Dirección (https://...)", width="large"),
+                                             "descripcion": st.column_config.TextColumn("Descripción", width="large")})
+    if st.button("Guardar enlaces", icon=":material/save:"):
+        lista_e = [{"titulo": str(r["titulo"]).strip(), "url": str(r["url"]).strip(),
+                    "descripcion": str(r["descripcion"] or "").strip()}
+                   for _, r in editados.iterrows() if str(r["titulo"] or "").strip() and str(r["url"] or "").startswith("http")]
+        L.guardar_enlaces(RUTA_CONFIG, config, lista_e)
+        subir_y_registrar("Guarda enlaces útiles", f"{len(lista_e)} enlaces", RUTA_CONFIG)
+        st.session_state.pop("editor_enlaces", None)
+        st.cache_data.clear()
+        st.toast("Enlaces guardados", icon=":material/check:")
+        st.rerun()
+
+
+def seccion_estado_sistema() -> None:
+    """Revisión rápida de que todo esté conectado: correo, almacenamiento, reportes y tarifas."""
+    import acceso as A_
+    import correo_app
+    st.markdown("### Estado del sistema")
+    nota("Para revisar de un vistazo que todo esté conectado. Lo que esté en rojo necesita atención.")
+    metodo = correo_app.metodo()
+    vence_t = almacen.vencimiento_token()
+    problemas_r = L.validar_reportes(CARPETA)
+    pend = L.remitentes_pendientes(correo) if correo is not None else pd.DataFrame()
+    dias_c = (date.today() - pd.Timestamp(_g_correo).date()).days if corte_correo_txt else None
+    filas = [
+        ("Envío de correos (códigos y avisos)", bool(metodo),
+         {"smtp": "Por SMTP (Secrets)", "outlook": "Por Outlook de este computador"}.get(metodo, "Sin configurar: no se pueden crear cuentas")),
+        ("Dónde se guardan usuarios y bitácora", True,
+         "GitHub (rama datos-acceso)" if almacen.usa_github() else "Carpeta local"),
+        *([("Token de GitHub", (vence_t - pd.Timestamp.now()).days > 15 if vence_t is not None else True,
+            f"Vence el {vence_t:%d/%m/%Y}" if vence_t is not None else "Sin fecha de vencimiento conocida")]
+          if almacen.usa_github() else []),
+        ("Revisión de los reportes", not problemas_r, "Sin problemas" if not problemas_r else " · ".join(problemas_r)),
+        ("Clave fija para «Recordarme»", A_.tiene_clave_sesion_fija() or not S.en_la_nube(),
+         "En los Secrets" if A_.tiene_clave_sesion_fija() else ("Archivo local" if not S.en_la_nube() else "Falta en los Secrets")),
+        ("Personas del Equipo CRM (acceso.json)", bool(A_.leer_acceso()["equipo_crm"]),
+         f"{len(A_.leer_acceso()['equipo_crm'])} correos"),
+        ("Reporte de WhatsApp (data.xlsx)", dias_desde <= 7, f"Datos al {fecha_max:%d/%m/%Y} ({frescura})"),
+        ("Reporte de correo (data_correo.xlsx)", correo is not None and (dias_c is None or dias_c <= 7),
+         "No está" if correo is None else (f"Datos al {corte_correo_txt}"
+                                           + ("" if info_correo.get("con_fecha") else " · sin fecha de envío"))),
+        ("Remitentes de correo sin unidad", pend.empty, "Ninguno" if pend.empty else f"{len(pend)} por asignar"),
+        ("Tablas de tarifas de WhatsApp", True, texto_tarifas),
+        ("Precios por 1.000 créditos", all(PRECIOS_OK.get(c) for c in CANALES),
+         " · ".join(f"{NOMBRE_CANAL[c]} {txt_precio(PRECIOS.get(c))}" for c in CANALES)),
+    ]
+    html_f = "".join(
+        f'<div class="dato-fila"><span><i class="{"punto-ok" if ok else "punto-alerta"}" style="margin-right:8px;'
+        f'{"" if ok else "background:var(--t-semaforo-rojo, #D1372C);"}"></i>{nombre}</span><b>{detalle}</b></div>'
+        for nombre, ok, detalle in filas)
+    st.markdown(f'<div class="panel-unidades">{html_f}</div>', unsafe_allow_html=True)
 
 
 def pagina_pendiente(c: str) -> None:
     st.markdown(f"### {NOMBRE_CANAL[c]}")
     st.markdown(f'<div class="semaforo">{tarjeta_pendiente(c)}</div>', unsafe_allow_html=True)
+    if c == "sms":
+        tabla_sms = L.leer_tarifas_sms(CARPETA / "tarifas_sms")
+        co = tabla_sms.loc[tabla_sms["ISO"] == "CO", "Multiplier"]
+        st.markdown(
+            "Para conectar **SMS** falta **el reporte de Marketing Cloud** con los SMS enviados (idealmente con fecha "
+            "y país de destino) y **las compras de créditos** de SMS.\n\n"
+            f"Ya está listo lo demás: el precio (**{txt_precio(PRECIOS.get('sms'))} USD por 1.000 créditos**, "
+            f"0,004888 por crédito) y la tabla de multiplicadores por país de Salesforce (carpeta `tarifas_sms/`): "
+            f"en Colombia cada SMS gasta **{str(float(co.iloc[0])).replace('.', ',') if len(co) else '0,74'} créditos**; "
+            "los países que no están en la tabla se cobran a 80.")
+        if not tabla_sms.empty:
+            with st.expander("Multiplicadores de SMS cargados", icon=":material/table:"):
+                st.dataframe(tabla_sms.drop(columns=["vigente_desde"]), hide_index=True, width="stretch")
+        return
     st.markdown(
         f"Para conectar **{NOMBRE_CANAL[c]}** se necesita:\n"
-        f"1. **El reporte de Marketing Cloud** de {NOMBRE_CANAL[c].lower()}, como el `data.xlsx` de WhatsApp.\n"
-        f"2. **Su tabla de tarifas** (multiplicadores de Salesforce Message Credits para {NOMBRE_CANAL[c].lower()}), "
-        "con su fecha de vigencia.\n"
-        "3. **Sus compras de créditos** y el **precio por 1.000 créditos** (Todos los canales → Configuración).\n\n"
-        "Con eso, este canal tendrá las mismas pestañas que WhatsApp: Resumen, Proyección, Journeys y Detalle, "
-        "separadas por unidad.")
+        f"1. **El reporte de Marketing Cloud** de {NOMBRE_CANAL[c].lower()}.\n"
+        f"2. **Su tabla de tarifas** (multiplicadores de Salesforce Message Credits), con su fecha de vigencia.\n"
+        "3. **Sus compras de créditos** y el **precio por 1.000 créditos** (Todos los canales → Configuración).")
 
+
+# ---------------------------------------------------------------------------
+# Desde tu última visita (arriba, debajo del título)
+# ---------------------------------------------------------------------------
+
+def foto_visita() -> dict:
+    """Cómo están los créditos ahora, para compararlo en la próxima visita de esta persona."""
+    alcance = list(L.UNIDADES) if CTX["admin"] else [u for u in L.UNIDADES if u in CTX["unidades"]]
+    estados_f, usado, disponible = {}, 0.0, 0.0
+    if CTX["admin"]:
+        e_t = estado_de("Ambas líneas", None)
+        estados_f["WhatsApp (total)"] = e_t["estado"]
+        usado, disponible = e_t["consumido"], e_t["disponible"]
+    for u in alcance:
+        e_u = estado_de("Ambas líneas", u)
+        estados_f[f"WhatsApp · {NOMBRE_UNIDAD_APP[u]}"] = e_u["estado"]
+        if not CTX["admin"]:
+            usado += e_u["consumido"]
+            disponible += e_u["disponible"]
+    foto = {"datos_w": f"{fecha_max:%d/%m/%Y}", "usado_w": usado, "uso_w": usado / disponible if disponible else None,
+            "estados": estados_f}
+    if correo is not None:
+        c_alc = correo if CTX["admin"] else correo[correo["unidad"].isin(alcance)]
+        foto["correos"] = float(c_alc["envios"].sum())
+        if CTX["admin"]:
+            foto["remitentes_pend"] = list(L.remitentes_pendientes(correo)["remitente"])
+    return foto
+
+
+if opcion_periodo == "Todo hasta la fecha":   # la foto se toma con el estado a hoy, no con un periodo pasado
+    with zona_novedades:
+        try:
+            N.mostrar(CTX, foto_visita())
+        except Exception as error:   # el resumen nunca debe tumbar el tablero
+            print(f"[novedades] {error}", file=sys.stderr)
+
+if st.session_state.pop("imprimir", False):
+    st.html("<script>setTimeout(function () { window.print(); }, 900);</script>", unsafe_allow_javascript=True)
 
 if canal == "todos":
     pagina_todos()
+elif canal == "correo" and "correo" in CANALES_CONECTADOS:
+    pagina_correo()
 elif canal not in CANALES_CONECTADOS:
     pagina_pendiente(canal)
