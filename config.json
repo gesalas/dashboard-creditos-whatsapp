@@ -1,10 +1,11 @@
 {
   "compras": [
     {"fecha": "2026-01-01", "linea": "UCP", "creditos": 1292456, "nota": "Créditos iniciales de UCP (valor del dashboard original)"},
-    {"fecha": "2026-01-01", "linea": "Outbound", "creditos": 20643000, "nota": "Créditos iniciales de Outbound (valor del dashboard original)"}
+    {"fecha": "2026-01-01", "linea": "Outbound", "creditos": 20643000, "nota": "Créditos iniciales de Outbound (valor del dashboard original)"},
+    {"fecha": "2026-11-06", "linea": "UCP", "creditos": 3067544, "nota": ""}
   ],
-  "general": {"creditos_totales": 21935456, "unidades": {"MERCA": 15788323, "EGRES": 30000, "DONAC": 20000}},
-  "ucp": {"creditos_totales": 1292456, "unidades": {"MERCA": 1292456, "EGRES": 0, "DONAC": 0}},
+  "general": {"creditos_totales": 25003000, "unidades": {"MERCA": 15788323, "EGRES": 30000, "DONAC": 20000}},
+  "ucp": {"creditos_totales": 4360000, "unidades": {"MERCA": 1292456, "EGRES": 0, "DONAC": 0}},
   "outbound": {"creditos_totales": 20643000, "unidades": {"MERCA": 14495867, "EGRES": 30000, "DONAC": 20000}},
   "precios_usd_1000": {"whatsapp": 4.16, "correo": 4.0, "sms": 4.888},
   "precios_confirmados": {"whatsapp": true, "correo": true, "sms": true},
